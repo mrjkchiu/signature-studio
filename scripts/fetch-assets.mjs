@@ -81,12 +81,18 @@ if (fs.readdirSync(STROKE_DIR).length < 1000) {
     if (!f.endsWith('.json')) continue;
     const ch = f.slice(0, -5);
     if ([...ch].length !== 1) continue;
-    fs.copyFileSync(path.join(src, f), path.join(STROKE_DIR, f));
+    // 只保留中心线（medians）：引擎只用它做笔顺排序，轮廓字段不参与渲染
+    try {
+      const d = JSON.parse(fs.readFileSync(path.join(src, f), 'utf8'));
+      fs.writeFileSync(path.join(STROKE_DIR, f), JSON.stringify({ medians: d.medians || [] }));
+    } catch (e) {
+      fs.copyFileSync(path.join(src, f), path.join(STROKE_DIR, f));
+    }
     n++;
   }
   fs.rmSync(tmp, { recursive: true, force: true });
   fs.rmSync(tgz, { force: true });
-  console.log(`✅ 笔顺数据 ${n} 字`);
+  console.log(`✅ 笔顺数据 ${n} 字（仅中心线）`);
 } else {
   console.log('笔顺数据已存在，跳过');
 }

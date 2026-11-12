@@ -18,7 +18,7 @@ export const FONTS = [
   { id: 'lxgw', label: '霞鹜文楷', inh: '手写楷', css: 'SignatureLXGW', file: 'fonts/lxgwwenkailite.ttf', brush: 1.00 },
   { id: 'hy', label: '庆科黄油', inh: '圆黑', css: 'SignatureHY', file: 'fonts/zcoolhuangyou.ttf', brush: 1.00 },
   { id: 'yozai', label: '悠哉字体', inh: '硬笔手写', css: 'SignatureYozai', file: 'fonts/yozai.ttf', brush: 1.00 },
-  { id: 'smiley', label: '得意黑', inh: '潮流斜黑', css: 'SignatureSmiley', file: 'fonts/SmileySans-Oblique.ttf', brush: 1.00 },
+  { id: 'smiley', label: '得意黑', inh: '潮流斜黑', css: 'SignatureSmiley', file: 'fonts/smileysans.ttf', brush: 1.00 },
 ];
 
 export const PALETTES = [
@@ -155,17 +155,9 @@ export function mapCharGeometry({ ctx, item, fontSize, charData }) {
     return out;
   });
 
-  const shapes = charData.strokes.map((dstr) => {
-    const cmds = parsePathD(dstr);
-    return cmds.map((c) => {
-      if (c[0] === 'Z') return c;
-      const out = [c[0]];
-      for (let i = 1; i < c.length; i += 2) { out.push(tx(c[i]), ty(c[i + 1])); }
-      return out;
-    });
-  });
-
-  return { mediansPx, shapes, ink: { x0: inkX0, y0: inkY0, x1: inkX1, y1: inkY1 } };
+  // 注：不构建笔画轮廓（strokes 字段）——现在的骨架方案只用中心线，
+  // 这样笔顺数据里可以只保留 medians，APK 因此小 ~12MB。
+  return { mediansPx, ink: { x0: inkX0, y0: inkY0, x1: inkX1, y1: inkY1 } };
 }
 
 /** 组装场景 */

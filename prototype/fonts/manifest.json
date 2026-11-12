@@ -1,14 +1,5 @@
 [
   {
-    "id": "msz",
-    "label": "马善政",
-    "inh": "毛笔楷",
-    "file": "fonts/mashanzheng.ttf",
-    "license": "SIL OFL 1.1",
-    "source": "https://fonts.google.com/specimen/Ma+Shan+Zheng",
-    "verified": true
-  },
-  {
     "id": "zmx",
     "label": "志莽行书",
     "inh": "行书",
@@ -36,30 +27,12 @@
     "verified": true
   },
   {
-    "id": "zkk",
-    "label": "站酷快乐",
-    "inh": "美术字",
-    "file": "fonts/zcoolkuaile.ttf",
-    "license": "SIL OFL 1.1",
-    "source": "https://fonts.google.com/specimen/ZCOOL+KuaiLe",
-    "verified": true
-  },
-  {
     "id": "lxgw",
     "label": "霞鹜文楷",
     "inh": "手写楷",
     "file": "fonts/lxgwwenkailite.ttf",
     "license": "SIL OFL 1.1",
     "source": "https://github.com/lxgw/LxgwWenKai-Lite",
-    "verified": true
-  },
-  {
-    "id": "marker",
-    "label": "霞鹜漫黑",
-    "inh": "马克笔",
-    "file": "fonts/markergothic.ttf",
-    "license": "SIL OFL 1.1",
-    "source": "https://github.com/lxgw/LxgwMarkerGothic",
     "verified": true
   },
   {
@@ -81,19 +54,10 @@
     "verified": true
   },
   {
-    "id": "xw",
-    "label": "站酷小薇",
-    "inh": "清瘦宋",
-    "file": "fonts/zcoolxiaowei.ttf",
-    "license": "SIL OFL 1.1",
-    "source": "https://fonts.google.com/specimen/ZCOOL+XiaoWei",
-    "verified": true
-  },
-  {
     "id": "smiley",
     "label": "得意黑",
     "inh": "潮流斜黑",
-    "file": "fonts/SmileySans-Oblique.ttf",
+    "file": "fonts/smileysans.ttf",
     "license": "SIL OFL 1.1",
     "source": "https://github.com/atelier-anchor/smiley-sans",
     "verified": true
