@@ -1,0 +1,67 @@
+name: release-apk
+
+# 打 tag（v0.1.0 这种）就自动构建并把 APK 挂成 Release 附件：
+# 公开直链、不过期、免登录下载。
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: 拉素材（字体 + 笔顺数据）
+        run: node scripts/fetch-assets.mjs
+
+      - name: 打包 assets
+        run: bash android/copy-assets.sh
+
+      - name: 补齐 Android SDK 组件
+        run: |
+          yes | sdkmanager --licenses >/dev/null 2>&1 || true
+          sdkmanager "platforms;android-34" "build-tools;34.0.0" >/dev/null 2>&1 || true
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+
+      - name: 构建 debug APK
+        working-directory: android
+        run: gradle assembleDebug --no-daemon
+
+      - name: 重命名产物
+        run: |
+          VER="${GITHUB_REF_NAME:-manual}"
+          cp android/app/build/outputs/apk/debug/app-debug.apk "signature-studio-${VER}.apk"
+          ls -lh signature-studio-*.apk
+
+      - name: 发布 Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: 签名工坊 ${{ github.ref_name }}
+          body: |
+            动态艺术签名 App · WebView 包壳版（debug 签名，直接安装）
+
+            - minSdk 26（Android 8+），包名 `com.dsh.signature`
+            - 完全离线：没有申请 INTERNET 权限
+            - 11 套 OFL 开源中文字体 · 逐笔书写 · 笔锋 · 装饰/印章/情侣
+
+            安装：下载下方 `signature-studio-*.apk` → 允许「未知来源」→ 安装。
+          files: signature-studio-*.apk
+          fail_on_unmatched_files: true
