@@ -1,175 +1,131 @@
-# 交接文档 · 动态艺术签名 App
+# 交接文档 · 签名工坊（动态艺术签名 App）
 
-> 写于 2026-11-12　给下一个接手这个任务的 AI / 开发者。
-> 读完这一份就能继续干活，不用重新问需求、不用重新试错。
-
----
-
-## 0. 一句话现状
-
-需求已定稿到 v0.3，Web 可交互原型已跑通并做了像素级自检（逐笔书写覆盖率 91–99%）。
-**下一步：等用户验收原型观感 → 决定走 Web 打磨还是直接做 Android App。**
+> 给任何接手的 AI / 开发者。读完即可继续，不需要翻聊天记录。
+> 当前版本：**v0.3.9**（2026-11-13）
+> ⚠️ **发版规则（用户明确要求）**：任何 tag / Release **必须先给出 handoff 并征得用户同意**，不得擅自发版。
 
 ---
 
-## 1. 用户要什么
+## 1. 一句话
 
-原话：「我想做一个安卓端的动态艺术签名软件，支持多种艺术文字、颜色、动效。先帮我完善需求」
+Android 上"输入名字 → 逐笔写出来的艺术签名 → 导出 PNG/GIF/MP4"的 App。
+**Web 原型 + WebView 包壳**，由 GitHub Actions 云端构建 APK，手机端不参与编译。
 
-已通过两轮提问确认的决策（**不要再问一遍**）：
+- 仓库：https://github.com/mrjkchiu/signature-studio
+- 最新 APK：https://github.com/mrjkchiu/signature-studio/releases/latest/download/signature-studio-latest.apk
+- 本地工作区：`/root/workspace`（Android proot 环境，无 JDK/SDK，靠云端构建）
 
-| 决策项 | 结论 |
+## 2. 两个 Tab（产品形态）
+
+| Tab | 引擎 | 能力 |
+| --- | --- | --- |
+| **中文签名** | 自研：艺术字体 → 骨架提取 → 笔顺排序 | 11→7 套 OFL 字体、逐笔书写、笔锋缎带、13 种笔绘装饰（可拖动）、印章/落款日期/下划线、情侣双人、12 种背景、HSL 滑杆调色、PNG/透明 PNG/GIF/MP4 |
+| **英文签名 · 移植版** | 移植 tyx-signature（MIT） | TYX Brush 笔刷、压力模型、收笔花体、太阳/猫/爱心/星星装饰（眨眼/折耳）、光点入场/离场、下划线 lift、**情侣横排（装饰一/中间/装饰二）**、画幅 16:9·9:16·1:1、PNG/GIF/MP4 |
+
+## 3. 架构与关键路径
+
+```
+prototype/
+  index.html        两个 Tab 的 UI（原生控件 + 画布）
+  app.js            状态机、控件、导出编排、拖拽
+  renderer.js       中文引擎：布局/遮罩/缎带笔锋/背景/合成
+  skeleton.js       Zhang-Suen 细化 + 骨架拆段 + 楷书笔顺排序 + 距离变换笔宽
+  decor.js          中文版装饰矢量图形（13 种）+ 印章/日期/下划线/情侣心
+  exporter.js       GIF（内置 gifenc）与 MP4（调原生桥）
+  vendor/gifenc.mjs 内置 gifenc（MIT），离线可用
+  port/             英文引擎：positional.js（笔画数据）brush.js engine.js decor.js
+  data/strokes/     9574 字笔顺数据（按字按需 fetch，不进 git）
+  fonts/            7 套 OFL 字体（不进 git，由脚本拉取）
+android/
+  app/src/main/java/com/dsh/signature/
+    MainActivity.kt   WebView + WebViewAssetLoader + 三个 JS 桥
+    VideoEncoder.kt   MediaCodec H.264 + MediaMuxer（逐帧 JPEG → MP4 → 相册）
+  copy-assets.sh      把 prototype 打包进 assets，并自动裁剪字体列表
+scripts/fetch-assets.mjs  拉字体 + 笔顺数据（带镜像回退）
+.github/workflows/   build-apk.yml（push main 构建）· release-apk.yml（tag 发版）
+```
+
+**渲染管线（中文）**：字体轮廓 → 骨架(1px) → 拆段/合并 → 楷书数据仅用于排序 →
+逐点笔宽（距离变换）→ 变宽缎带 ∩ 字形 → 着色/发光/流光 → 合成。
+核心结论：**不要用楷书轮廓当遮罩**（覆盖率仅 31–76%，草书会碎），必须用字体自身骨架。
+
+**无网络权限**：页面资源全部走 `WebViewAssetLoader`（`https://appassets.androidplatform.net`），
+请求在客户端被拦截，所以 Manifest 里**没有 INTERNET 权限**（隐私卖点，勿加）。
+
+**导出**：PNG → `AndroidApp.saveImage`（MediaStore 相册）；GIF → JS 编码后 `AndroidApp.saveBytes`；
+MP4 → `AndroidVideo.begin/push/finish` → 原生 MediaCodec → 相册 Movies。
+
+## 4. 构建与发版
+
+```bash
+# 本地预览（原型）
+cd prototype && python3 -m http.server 8765 --bind 0.0.0.0
+
+# 构建 APK（云端）：push main 或 tag，Actions 自动构建
+# 发版（需用户同意后）：
+git tag -a vX.Y.Z -m "说明" && git push origin vX.Y.Z
+```
+
+- Release 同时产出 `signature-studio-vX.Y.Z.apk` 与固定名 `signature-studio-latest.apk`
+- **发版前必须先出交接快照**：`node scripts/make-handoff.mjs --version vX.Y.Z`
+  → 生成 `docs/handoff/handoff-<时间>-<sha>.md`，把路径发给用户确认，**得到同意才打 tag**
+- **CI 失败排查**：工作流带失败兜底，会把 Gradle 日志提交到 `ci-logs` 分支。
+  读取用 **raw.githubusercontent**（jsdelivr 对分支文件有缓存，会拿到旧内容）：
+  `https://raw.githubusercontent.com/mrjkchiu/signature-studio/ci-logs/ci-build-error.log`
+
+## 5. 踩过的坑（别重复）
+
+| 坑 | 结论 |
 | --- | --- |
-| 产品阶段 | 先做能跑的原型/自己用，架构预留上架能力 |
-| "动态"含义 | 全都要：逐笔书写、装饰光效、GIF/视频、动态壁纸、墨迹质感 |
-| 签名内容 | 中文姓名 2–4 字 + 中英文 + 单字/短句/公司名 |
-| 字体 | 免费商用/开源字体（OFL）+ 程序化变形，零版权风险 |
-| 账号/联网 | 无账号；P0 完全离线、不申请 INTERNET 权限（隐私卖点） |
-| 手写录入 | 不做，排除到 P2 之后 |
-| 临摹练习 | 做，P2 |
-| 落款元素 | 印章 / 落款日期 / 第二行文字，三者各自独立开关 |
-| 导出优先级 | ① 9:16 动图 → ② 透明 PNG 水印 → ③ 壁纸 → ④ 头像/封面 |
-| 主题 | 深色 / 浅色 / 跟随系统，**UI 主题与作品画布背景解耦** |
-| 模板 | 风格 6 类 × 场景 6 类，P0 24 套 |
-| 动画时长 | 自动 `700 + 650×字数` ms 钳制 1500–4500，另带快/慢/自定义 |
-| 界面语言 | 中文，字符串资源抽离预留英文 |
-| 技术栈 | Android 原生 Kotlin + Jetpack Compose（原型用 Web 验证观感） |
+| Kotlin `= try {}` 里写 `return` | 编译报 "Returns are prohibited..." → 改成块体 `fun x(): T { return try {...} }` |
+| 仓库没有 gradlew | CI 里用 `gradle`，不要 `./gradlew` |
+| GitHub API 匿名限流 60/h | 查状态失败时用 Releases 页 HEAD 或 raw 文件判断 |
+| jsdelivr 缓存分支文件 | 读最新日志用 raw.githubusercontent |
+| apt 源（ports.ubuntu.com）不通 | 装不了 openssh-client → 用 pip 的 paramiko 包装 SSH（`~/.ssh/git-ssh`，已配好，走 ssh.github.com:443） |
+| 推送偶发失败 | 重试循环（DNS 抖动），`git push` 重试 5–8 次通常成功 |
+| WebView 不支持 `<a download>` | 保存必须走原生桥，否则"点了没反应" |
+| 手机拖动装饰卡顿/断 | canvas 需 `touch-action:none`；用 window 级 pointer 事件；拖动时立即重绘 |
+| 移植版字号/笔宽串台 | 不同功能的按钮**不要共用一组与同一个选中值**（1 与 1.0 相等会互串） |
+| 字体/笔顺数据大 | 不进 git，`node scripts/fetch-assets.mjs` 拉取；CI 里也执行 |
+| 旧版 APK 覆盖安装失败 | CI debug 签名每次不同 → 先卸载再装 |
 
----
-
-## 2. 产物清单
-
-| 文件 | 内容 |
-| --- | --- |
-| `docs/动态艺术签名App-需求文档-v0.1.md` | **需求文档 v0.3**（文件名是 v0.1，内容已改到 v0.3）：12 个动效详表、字体版权表、笔顺三方案对比、验收标准、8 周里程碑、风险表 |
-| `docs/动态艺术签名App-原型与交互规格-v0.1.md` | **原型与交互规格 v0.2**：6 页线框、5 个参数 Tab 控件规格、手势表、状态机、边界与文案、双主题 token |
-| `prototype/` | **可交互 Web 原型**（详见 `prototype/README.md`） |
-| `prototype/renderer.js` | 渲染管线，浏览器与 Node 共用 |
-| `prototype/skeleton.js` | **核心**：从艺术字体字形提取笔画骨架 + 笔画排序 |
-| `prototype/app.js` | 界面逻辑、字体加载、按字加载笔顺、PNG 导出 |
-| `prototype/tools/` | 离线自检工具（覆盖率诊断 / 关键帧拼图 / 浏览器截图） |
-
----
-
-## 3. 关键技术结论（最重要，别重复踩坑）
-
-需求文档里最大的风险是「逐笔书写」，原型已经用两种方案实测过，结论明确：
-
-### ❌ 方案 A：用现成楷书笔顺数据（hanzi-writer-data）直接套艺术字体
-- 试过：把楷书中心线/笔画轮廓按包围盒归一化映射到艺术字体上做遮罩
-- **实测覆盖率只有 31–76%**，草书字（柳建毛草）直接被打碎成残片
-- 原因：楷书字形结构和草书/美术字**根本不是一套结构**，套上去必然漏
-- 结论：**不要走这条路**
-
-### ✅ 方案 B：从艺术字体自己的字形提取骨架（当前采用）
-```
-① 艺术字体字形栅格化（字号 260，画布 380²）
-② Zhang-Suen 细化 → 1px 骨架
-③ 按分叉点拆成子笔画段 → RDP 简化
-④ 用楷书笔顺数据给子笔画段排序（只借顺序，不借形状）
-⑤ 距离变换估每段局部笔宽 → 笔尖沿骨架推进 ∩ 字形
-```
-- **实测覆盖率 85–99%**（`node tools/diff.mjs` 可复现）；漏掉的是笔画边缘细缝，不影响观感
-- 骨架计算耗时（Node，单字，含缓存首次）：12–100ms；手机上约 2–3 倍，已有「逐笔分析中」提示 + 缓存
-- 好处：换任何字体都不会写坏字形；书写顺序仍然正确
-- 这同时印证了需求文档 §7.2 的架构决策：**字形层与笔顺层解耦**
-
-### 已踩过的坑（省你时间）
-1. `hanzi-writer-data` 的 `medians` 是 `[[x,y],...]` 嵌套格式，**不是**扁平数组，我一开始按扁平算导致坐标全 NaN。
-2. 数据坐标系：1024 em 盒、**y 轴向上**、基线在 y=900 → 画布映射要 `y = baseline - y/1024*fontSize`。
-3. 楷书数据只含 9574 个常用字，生僻字要 fallback（现在的做法：`scene.missing` + 整体渐显）。
-4. 本机没有 `curl`/`wget`，网络请求一律用 `node -e 'fetch(...)'`。
-5. `npm` 用 `registry.npmmirror.com`；`fonts.gstatic.com` 可达，但 CORS/CDN 在正版 App 里不可用，原型字体已全部下载到本地。
-
----
-
-## 4. 怎么跑原型
+## 6. 验证工具（改完必跑）
 
 ```bash
-cd /root/workspace/prototype
-python3 -m http.server 8765 --bind 0.0.0.0     # 已启动过一次，可能已经挂了就重启
-```
-手机浏览器打开 `http://127.0.0.1:8765/`（不行就换手机局域网 IP:8765）。
-
-原型功能：任意中文名（≤8 字）、11 套字体、6 套配色、4 种背景、6 种可叠加动效、时长切换、深浅主题、PNG/透明 PNG 导出。
-
----
-
-## 5. 怎么验证（改完代码必须跑）
-
-```bash
-cd /root/workspace/prototype
-node tools/diff.mjs      # 覆盖率 + 每套字体骨架耗时（基线：最低 85%，多数 95%+）
-node tools/verify.mjs    # 输出 25/50/75/100% 关键帧拼图到 tools/frames/sheet_*.png
-node tools/shot.mjs      # 真实 Chromium 打开页面、跑交互、截图到 tools/shots/（需先装浏览器，见下）
+cd prototype
+node tools/diff.mjs        # 中文引擎覆盖率（当前最低 ~71%，末帧补全 100%）
+node tools/smooth.mjs      # 书写顺滑度（空帧率应 ≤10%）
+node tools/verify-port.mjs # 移植版 20 个参数是否真实生效（墨迹占比对比）
 ```
 
-**截图验证的现状（重要）**：`tools/shot.mjs` 已写好，但本机 `npx playwright install chromium-headless-shell`
-卡在 195MB 下载上（网络原因，多次重试都停在 0%）。需要时先跑：
+## 7. 已知问题 / 待办
 
-```bash
-cd /root/workspace/prototype && npx playwright install chromium-headless-shell
-```
+1. **MP4 尚未真机验证**（MediaCodec 路径只保证编译通过）；失败时把 toast 文案发回来
+2. GIF 为 256 色量化，深色渐变背景会有轻微色带（可加抖色）
+3. 中文引擎中途覆盖率 71–99%，靠"收笔补齐"保证末帧完整
+4. 移植版只有 TYX Brush 一套笔刷（参考项目另有 3 套轮廓字体未移植）
+5. 背景音乐、播放进度拖动、"完整预览"静态模式未做
+6. 中文版音乐/导出视频的进度体验较粗（toast 百分比）
 
-装好后 `node tools/shot.mjs` 会输出 4 张手机尺寸截图 + 实测帧率 + 导出 PNG 编码测试。
-在没有截图的情况下，已做过一轮**静态一致性检查**（2026-11-12）：
-- `app.js` 引用的 19 个 DOM id 与 `index.html` 全部对得上
-- `app.js` 调用的 20 个 `renderer.js` 导出全部存在
-- 关键资源 HTTP 200：`/`、`app.js`、`renderer.js`、`skeleton.js`、`data/strokes/张.json`、`fonts/*.ttf`
+## 8. 下一步建议（按优先级）
 
-`tools/frames/diag_*.png`：灰=已覆盖，红=漏墨。
+1. 真机验证 MP4 并修复编码问题（最高风险项）
+2. GIF 加 Floyd–Steinberg 抖动，提升渐变观感
+3. 中文版装饰拖动在低端机上做节流（每 2 帧重绘一次）
+4. 模板体系（需求文档 P0 里 24 套）与竖排排版
+5. 字体子集化（APK 可从 64MB 降到 ~30MB）
 
-**改参数的入口**：`renderer.js` 里的 `buildScene` 时间分配、`createMaskPainter` 笔锋 taper、
-`skeleton.js` 里的 `size`（栅格字号，越大越精细越慢）、`simplify` 的 eps。
+## 9. 用户偏好（重要）
 
----
+- 说话直接、要结果；不接受"差不多"的观感
+- 中文界面；发版前必须先出 handoff 并等确认
+- 审美偏现代（2026 风格），嫌弃"老气"的传统样式
+- 明确要求过：不要擅自发版；保存类操作要有确认弹窗
 
-## 6. 环境事实
+## 10. 文档
 
-- 运行在 **Android 手机上的 Ubuntu 24.04 proot**（免 Root），**没有可用的沙箱后端**，bash 一律 `sandbox_permissions: danger-full-access`。
-- 已装：node 24 / npm / python3 / git；**没有 java / gradle / Android SDK**。
-- 磁盘剩约 30G，内存 15G，4 核。
-- 已装额外依赖：`prototype/node_modules`（@napi-rs/canvas、playwright）、playwright 的 chromium（`~/.cache/ms-playwright`）。
-- 手机屏幕小，给用户的回复要简洁；app 界面是 Flutter 原生，不是网页。
-
----
-
-## 7. 当前进度与下一步
-
-**已完成**
-- [x] 需求文档 v0.3 + 原型交互规格 v0.2
-- [x] Web 原型：渲染管线、动效、控制面板、导出
-- [x] v0.2 书写手感重做（碎段先合并再排序 / 变宽缎带 + 方向压力 + 笔尖收锋 / 按弧长推进），空帧率 22–58% → 4–10%
-- [x] 字体扩到 11 套（霞鹜文楷 / 霞鹜漫黑 / 庆科黄油 / 悠哉硬笔 / 站酷小薇 / 得意黑，全部 OFL）
-- [x] v0.5 完整移植参考项目引擎并做成双 Tab（中文签名 / 英文签名·移植版），代码在 `prototype/port/`
-- [x] v0.4 参考项目动效移植：矢量笔触装饰（太阳/猫/爱心/星星 + 眨眼折耳）、光点入场、彩色笔片收尾
-- [x] v0.3 签名周边功能：装饰图案（emoji + 小动作 + 大小/位置）、落款印章（方/圆 + 按压回弹）、落款日期、下划线、**情侣双人签名**
-- [x] 像素级自检 + 顺滑度自检（`tools/diff.mjs` / `tools/smooth.mjs`），给出 `tools/frames/` 证据
-- [x] 端到端真实浏览器截图脚本（`tools/shot.mjs`）
-
-**进行中 / 待办**
-- [ ] 真实浏览器截图验证（脚本已就绪，浏览器二进制下载卡住，见 §5）
-- [ ] 用户验收原型观感（这是当前的阻塞点：等用户看过再决定方向）
-- [ ] 根据用户反馈调参（字体笔宽、动效节奏、配色）
-- [ ] 装饰/落款还可增强：印章阴文阳文切换、装饰自由拖动位置、装饰用矢量图形替代 emoji
-- [ ] 导出视频：参考项目用 WebCodecs+Mediabunny 出 MP4、gifenc 出透明 GIF，原型目前只有 PNG
-- [ ] 决定落地路径：
-  - **路径 A（真 APK）**：`apt install openjdk-17-jdk` + Android cmdline-tools + build-tools 35 → Gradle 编译 debug APK。注意 proot 里**没有 adb**，只能把 APK 文件放出来让用户手动装。
-  - **路径 B**：继续用 Web 原型对齐观感，再移植 Kotlin/Compose。
-- [ ] Android 阶段按需求文档里程碑 M1–M6 推进（约 8 周）
-
-**给下一个 AI 的建议顺序**
-1. 先跑 `node tools/diff.mjs` 确认基线（应 ≥90%）
-2. 跑 `node tools/shot.mjs` 看真实页面截图
-3. 读 `docs/...需求文档` §7 技术方案 + §5 动效详表
-4. 等用户对原型的反馈，再决定 M1 怎么起
-
----
-
-## 8. 原型的已知限制（别当成 bug 修）
-
-1. 只验证单行动效；竖排、印章落款、模板体系都还没做（在需求文档里）
-2. 笔顺排序是启发式（楷书顺序指导），草书类字体顺序可能和真人书写略有出入——**形状不受影响**
-3. 导出只有 PNG；GIF/MP4 编码器属于 Android 阶段
-4. 字体全量随包 21MB，正式版要子集化到每套 1–3MB
-5. 字体缺字时 fallback 成整体渐显，不是真正逐笔
+- 需求文档（v0.3）：`docs/动态艺术签名App-需求文档-v0.1.md`
+- 原型交互规格（v0.2）：`docs/动态艺术签名App-原型与交互规格-v0.1.md`
+- 云端构建指南：`CLOUD_BUILD.md`
+- 原型说明：`prototype/README.md`
+- 第三方许可：`THIRD_PARTY_NOTICES.md`
