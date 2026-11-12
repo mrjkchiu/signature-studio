@@ -6,7 +6,34 @@
 
 ---
 
-## 0. 方案选择
+## 0. 先把仓库交给云端
+
+仓库只有 ~500KB（字体和笔顺数据由脚本拉，不进 git）。三种方式任选：
+
+**A. 用 Git 托管（推荐，Muse 直接 clone）**
+```bash
+# 在 GitHub / Gitee 上先建一个空仓库（不要勾选初始化 README）
+cd <仓库根目录>
+git remote add origin https://github.com/<你的账号>/signature-studio.git
+git push -u origin main
+```
+然后把仓库地址给 Muse，让它 `git clone <地址>`。
+> 私有仓库要给 Muse 只读权限：GitHub 用 fine-grained token（只勾 repo 读），Gitee 用「只读部署公钥」。
+
+**B. 没有远程仓库时，用 bundle 单文件**
+```bash
+# 仓库里已生成 dist/signature-studio.bundle
+git clone dist/signature-studio.bundle signature-studio
+cd signature-studio
+git remote set-url origin <等你有远程后填>
+```
+把 `dist/signature-studio.bundle`（74KB）传给 Muse 即可，它用上面第一条命令就能还原出完整仓库。
+
+**C. 直接给 zip**：`dist/signature-handoff.zip`（63KB），解压即可，但没有 git 历史。
+
+---
+
+## 0.1 方案选择
 
 | 方案 | 做法 | 耗时 | 适合 |
 | --- | --- | --- | --- |
