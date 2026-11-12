@@ -71,37 +71,37 @@ class MainActivity : Activity() {
         setContentView(web)
     }
 
-    /** 供网页调用：把任意字节（GIF）存进相册 */
-    @JavascriptInterface
-    fun saveBytes(base64: String, mime: String, fileName: String): String {
-        return try {
-            val bytes = Base64.decode(base64, Base64.DEFAULT)
-            val values = ContentValues().apply {
-                put(MediaStore.Images.Media.DISPLAY_NAME, fileName)
-                put(MediaStore.Images.Media.MIME_TYPE, mime)
-                put(MediaStore.Images.Media.DATE_ADDED, System.currentTimeMillis() / 1000)
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/签名工坊")
-                    put(MediaStore.Images.Media.IS_PENDING, 1)
-                }
-            }
-            val uri = contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
-                ?: return "insert-failed"
-            contentResolver.openOutputStream(uri)?.use { it.write(bytes) } ?: return "open-failed"
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                values.clear(); values.put(MediaStore.Images.Media.IS_PENDING, 0)
-                contentResolver.update(uri, values, null, null)
-            }
-            toastOnUi("已保存到相册")
-            "ok"
-        } catch (e: Exception) {
-            toastOnUi("保存失败：" + (e.message ?: "未知"))
-            "err:" + (e.message ?: "unknown")
-        }
-    }
-
     /** 供网页调用：把 dataURL 的 PNG 存进相册 */
     inner class Bridge {
+        /** 供网页调用：把任意字节（GIF）存进相册 */
+        @JavascriptInterface
+        fun saveBytes(base64: String, mime: String, fileName: String): String {
+            return try {
+                val bytes = Base64.decode(base64, Base64.DEFAULT)
+                val values = ContentValues().apply {
+                    put(MediaStore.Images.Media.DISPLAY_NAME, fileName)
+                    put(MediaStore.Images.Media.MIME_TYPE, mime)
+                    put(MediaStore.Images.Media.DATE_ADDED, System.currentTimeMillis() / 1000)
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                        put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/签名工坊")
+                        put(MediaStore.Images.Media.IS_PENDING, 1)
+                    }
+                }
+                val uri = contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
+                    ?: return "insert-failed"
+                contentResolver.openOutputStream(uri)?.use { it.write(bytes) } ?: return "open-failed"
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    values.clear(); values.put(MediaStore.Images.Media.IS_PENDING, 0)
+                    contentResolver.update(uri, values, null, null)
+                }
+                toastOnUi("已保存到相册")
+                "ok"
+            } catch (e: Exception) {
+                toastOnUi("保存失败：" + (e.message ?: "未知"))
+                "err:" + (e.message ?: "unknown")
+            }
+        }
+
         @JavascriptInterface
         fun saveImage(dataUrl: String, fileName: String): String {
             return try {
