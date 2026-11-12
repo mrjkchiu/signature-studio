@@ -55,7 +55,7 @@ jobs:
         if: failure()
         run: |
           cd android
-          ./gradlew assembleDebug --no-daemon --stacktrace > ../ci-build-error.log 2>&1 || true
+          gradle assembleDebug --no-daemon --stacktrace > ../ci-build-error.log 2>&1 || true
           cd ..
           git config user.name "ci-bot"
           git config user.email "ci@local"
