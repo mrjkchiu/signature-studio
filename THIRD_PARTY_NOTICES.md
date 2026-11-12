@@ -27,6 +27,10 @@ App 图标中的「签名」图形取自 **Tabler Icons**（MIT License）
 - 用途：**仅借用"笔画书写顺序"**，字形轮廓与笔锋来自艺术字体自身的骨架提取
 - ⚠️ 商用上架前需法务确认该许可的衍生作品条款
 
+## GIF 编码
+**gifenc**（MIT License）—— https://github.com/mattdesl/gifenc
+- 用途：GIF 调色板量化、LZW 压缩与 GIF89a 打包（`prototype/vendor/gifenc.mjs`，已随包内置，离线可用）
+
 ## 构建期依赖
 - @napi-rs/canvas（MPL-2.0，仅开发/构建期用于生成图标与自查）
 - @resvg/resvg-js（MPL-2.0，仅构建期）

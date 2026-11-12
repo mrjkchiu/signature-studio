@@ -29,6 +29,7 @@ import androidx.webkit.WebViewAssetLoader
 class MainActivity : Activity() {
 
     private lateinit var web: WebView
+    private val videoEncoder by lazy { VideoEncoder(this) }
 
     private val assetLoader by lazy {
         WebViewAssetLoader.Builder()
@@ -59,6 +60,7 @@ class MainActivity : Activity() {
             displayZoomControls = false
         }
         web.addJavascriptInterface(Bridge(), "AndroidApp")
+        web.addJavascriptInterface(VideoBridge(), "AndroidVideo")
         web.webViewClient = object : WebViewClient() {
             override fun shouldInterceptRequest(
                 view: WebView,
@@ -67,6 +69,35 @@ class MainActivity : Activity() {
         }
         web.loadUrl("https://appassets.androidplatform.net/assets/www/index.html")
         setContentView(web)
+    }
+
+    /** 供网页调用：把任意字节（GIF）存进相册 */
+    @JavascriptInterface
+    fun saveBytes(base64: String, mime: String, fileName: String): String {
+        return try {
+            val bytes = Base64.decode(base64, Base64.DEFAULT)
+            val values = ContentValues().apply {
+                put(MediaStore.Images.Media.DISPLAY_NAME, fileName)
+                put(MediaStore.Images.Media.MIME_TYPE, mime)
+                put(MediaStore.Images.Media.DATE_ADDED, System.currentTimeMillis() / 1000)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/签名工坊")
+                    put(MediaStore.Images.Media.IS_PENDING, 1)
+                }
+            }
+            val uri = contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
+                ?: return "insert-failed"
+            contentResolver.openOutputStream(uri)?.use { it.write(bytes) } ?: return "open-failed"
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                values.clear(); values.put(MediaStore.Images.Media.IS_PENDING, 0)
+                contentResolver.update(uri, values, null, null)
+            }
+            toastOnUi("已保存到相册")
+            "ok"
+        } catch (e: Exception) {
+            toastOnUi("保存失败：" + (e.message ?: "未知"))
+            "err:" + (e.message ?: "unknown")
+        }
     }
 
     /** 供网页调用：把 dataURL 的 PNG 存进相册 */
@@ -107,6 +138,25 @@ class MainActivity : Activity() {
                 "err:" + (e.message ?: "unknown")
             }
         }
+    }
+
+    /** 原生 VideoEncoder 桥：逐帧 JPEG → H.264 MP4 → 相册 */
+    inner class VideoBridge {
+        @JavascriptInterface
+        fun begin(w: Int, h: Int, fps: Int): String = videoEncoder.begin(w, h, fps)
+
+        @JavascriptInterface
+        fun push(jpegDataUrl: String): String = videoEncoder.push(jpegDataUrl)
+
+        @JavascriptInterface
+        fun finish(): String {
+            val res = videoEncoder.finish()
+            if (res.startsWith("ok")) toastOnUi("视频已保存到相册 🎬") else toastOnUi("视频保存失败")
+            return res
+        }
+
+        @JavascriptInterface
+        fun cancel(): String { videoEncoder.cancel(); return "ok" }
     }
 
     private fun toastOnUi(msg: String) {

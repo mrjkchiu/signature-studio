@@ -10,11 +10,12 @@ DEST=app/src/main/assets/www
 rm -rf "$DEST"
 mkdir -p "$DEST/fonts"
 
-for f in index.html app.js renderer.js skeleton.js decor.js math.js; do
+for f in index.html app.js renderer.js skeleton.js decor.js math.js exporter.js; do
   [ -f "$SRC/$f" ] && cp "$SRC/$f" "$DEST/"
 done
 cp -r "$SRC/data" "$DEST/data"
 cp -r "$SRC/port" "$DEST/port"
+cp -r "$SRC/vendor" "$DEST/vendor"
 
 # 字体：默认全带（体积大）。想瘦身就只复制需要的几套，脚本会自动裁剪 FONTS。
 cp "$SRC"/fonts/*.ttf "$DEST/fonts/" 2>/dev/null || true

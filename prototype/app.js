@@ -1,6 +1,7 @@
 import * as R from './renderer.js';
 import * as PORT from './port/engine.js';
 import { DECOS, DECO_SIZES, SEALS, decorTail, decoAnchor } from './decor.js';
+import { exportGif, exportMp4Native, saveBytesNative, hasNativeVideo } from './exporter.js';
 
 // ---------------- 状态 ----------------
 const state = {
@@ -94,6 +95,11 @@ async function ensureChar(ch) {
 // ---------------- 调色滑块 ----------------
 function syncColorSliders() {
   const c = state.custom || { h: 210, s: 70, l: 70 };
+  $('gifCnBtn').addEventListener('click', () => doExportGif('cn'));
+  $('vidCnBtn').addEventListener('click', () => doExportVideo('cn'));
+  $('gifPortBtn').addEventListener('click', () => doExportGif('port'));
+  $('vidPortBtn').addEventListener('click', () => doExportVideo('port'));
+
   for (const [id, key] of [['hue', 'h'], ['sat', 's'], ['lum', 'l']]) {
     const el = $(id), out = $(id + 'Val');
     if (!el) continue;
@@ -561,6 +567,109 @@ function exportPort(transparent) {
   } catch (err) { toast('导出失败：' + err.message); }
 }
 
+// ---------------- GIF / MP4 导出 ----------------
+function progressToast(label, p) { toast(`${label} ${Math.round(p * 100)}%`); }
+
+async function downloadBytes(bytes, mime, fileName) {
+  const res = saveBytesNative(bytes, mime, fileName);
+  if (res === 'ok') { toast('已保存到相册 ✨'); return; }
+  if (res !== 'unsupported') { toast('保存失败：' + res); return; }
+  const blob = new Blob([bytes], { type: mime });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = fileName;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  toast('已导出文件');
+}
+
+/** 中文引擎导出环境（独立画布尺寸） */
+function cnExportRig(size) {
+  const g = makeCanvas(size, size), m = makeCanvas(size, size), tmp = makeCanvas(size, size);
+  const font = fontOf(state.fontId), palette = activePalette();
+  const isCouple = state.couple && !!state.text2;
+  const text = isCouple ? state.text + state.text2 : (state.text || '　');
+  const decorOn = state.deco !== 'none' || state.seal !== 'none' || state.date || state.underline || isCouple;
+  const scene = R.buildScene({
+    ctx: g.getContext('2d'), text, fontStack: fontStackOf(font), W: size, H: size, font,
+    getCharData, makeCanvas, duration: state.duration || 0,
+    coupleSplit: isCouple ? [...state.text].length : 0,
+    decorTailAdd: decorOn ? decorTail() : 0, comet: false, outro: false,
+  });
+  R.renderGlyphLayer(g, scene, palette);
+  const painter = R.createMaskPainter(m.getContext('2d'), scene, size, size, { makeCanvas });
+  painter.reset();
+  const env = {
+    ctx: null, scene, glyphCanvas: g, maskCanvas: m, tempCanvas: tmp, makeCanvas,
+    painter, particles: R.createParticleSystem(), palette,
+    backdropId: state.backdropId === 'none' ? 'dark' : state.backdropId,
+    decor: decorCfg(),
+    params: {
+      enter: state.fx.has('enter'), shine: state.fx.has('shine'), neon: state.fx.has('neon'),
+      trail: state.fx.has('trail'), particle: state.fx.has('particle'), comet: false, outro: false,
+    },
+  };
+  return {
+    duration: scene.duration / 1000,
+    draw: (ctx, t) => { env.ctx = ctx; R.renderFrame(env, t * 1000); },
+  };
+}
+
+function portExportRig(w, h) {
+  const cfg = portCfg();
+  const scene = PORT.buildPortScene({ ...cfg, background: { ...cfg.background, mode: 'solid' } }, w, h);
+  return {
+    duration: scene.total,
+    draw: (ctx, t) => PORT.renderPortFrame(ctx, scene, t),
+  };
+}
+
+async function doExportGif(kind) {
+  const ok = await confirmDialog(kind === 'cn' ? '导出中文签名的 GIF 动图（约 480px，保存到相册）？' : '导出移植版签名的 GIF 动图（约 480px）？');
+  if (!ok) return;
+  toast('正在生成 GIF…');
+  try {
+    const rig = kind === 'cn'
+      ? cnExportRig(480)
+      : (state.port.aspect === '9:16' ? portExportRig(360, 640) : state.port.aspect === '1:1' ? portExportRig(480, 480) : portExportRig(640, 360));
+    const dur = Math.min(rig.duration, 12);
+    const res = await exportGif({
+      draw: rig.draw, width: kind === 'cn' ? 480 : (state.port.aspect === '9:16' ? 360 : state.port.aspect === '1:1' ? 480 : 640),
+      height: kind === 'cn' ? 480 : (state.port.aspect === '9:16' ? 640 : state.port.aspect === '1:1' ? 480 : 360),
+      fps: 15, duration: dur, maxColors: 256,
+      onProgress: (p) => progressToast('GIF', p),
+    });
+    const name = `签名_${(kind === 'cn' ? state.text : state.port.text).replace(/\s+/g, '_') || 'signature'}.gif`;
+    await downloadBytes(res.bytes, 'image/gif', name);
+  } catch (e) {
+    toast('GIF 导出失败：' + e.message);
+  }
+}
+
+async function doExportVideo(kind) {
+  if (!hasNativeVideo()) { toast('当前环境不支持视频编码（请用 App 内导出）'); return; }
+  const ok = await confirmDialog(kind === 'cn' ? '导出中文签名的 MP4 视频（720p，保存到相册）？' : '导出移植版签名的 MP4 视频（720p）？');
+  if (!ok) return;
+  toast('正在生成视频…');
+  try {
+    const dims = kind === 'cn'
+      ? { w: 720, h: 720 }
+      : state.port.aspect === '9:16' ? { w: 540, h: 960 }
+      : state.port.aspect === '1:1' ? { w: 720, h: 720 }
+      : { w: 960, h: 540 };
+    const rig = kind === 'cn' ? cnExportRig(dims.w) : portExportRig(dims.w, dims.h);
+    const res = await exportMp4Native({
+      draw: rig.draw, width: dims.w, height: dims.h, fps: 30,
+      duration: Math.min(rig.duration, 15),
+      onProgress: (p) => progressToast('视频', p),
+    });
+    if (String(res).startsWith('ok')) toast('视频已保存到相册 🎬');
+    else toast('视频保存失败：' + res);
+  } catch (e) {
+    toast('视频导出失败：' + e.message);
+  }
+}
+
 // ---------------- 主题 ----------------
 function setupTheme() {
   const apply = () => {
@@ -600,6 +709,11 @@ async function main() {
   $('portPngTBtn').addEventListener('click', async () => {
     if (await confirmDialog('保存移植版透明 PNG 到相册？')) exportPort(true);
   });
+
+  $('gifCnBtn').addEventListener('click', () => doExportGif('cn'));
+  $('vidCnBtn').addEventListener('click', () => doExportVideo('cn'));
+  $('gifPortBtn').addEventListener('click', () => doExportGif('port'));
+  $('vidPortBtn').addEventListener('click', () => doExportVideo('port'));
 
   for (const [id, key] of [['hue', 'h'], ['sat', 's'], ['lum', 'l']]) {
     const el = $(id);
