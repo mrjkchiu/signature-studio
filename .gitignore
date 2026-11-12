@@ -1,0 +1,20 @@
+# 素材：体积大，由 scripts/fetch-assets.mjs 拉取
+prototype/fonts/*.ttf
+prototype/fonts/*.otf
+prototype/fonts/*.zip
+prototype/data/strokes/
+prototype/node_modules/
+prototype/tools/frames/
+prototype/tools/shots/
+node_modules/
+
+# 构建产物
+android/app/src/main/assets/www/
+android/app/build/
+android/.gradle/
+android/local.properties
+android/build/
+dist/*.zip
+dist/*.bundle
+.cache-hwd*
+*.log

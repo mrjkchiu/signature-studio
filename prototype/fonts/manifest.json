@@ -1,0 +1,101 @@
+[
+  {
+    "id": "msz",
+    "label": "马善政",
+    "inh": "毛笔楷",
+    "file": "fonts/mashanzheng.ttf",
+    "license": "SIL OFL 1.1",
+    "source": "https://fonts.google.com/specimen/Ma+Shan+Zheng",
+    "verified": true
+  },
+  {
+    "id": "zmx",
+    "label": "志莽行书",
+    "inh": "行书",
+    "file": "fonts/zhimangxing.ttf",
+    "license": "SIL OFL 1.1",
+    "source": "https://fonts.google.com/specimen/Zhi+Mang+Xing",
+    "verified": true
+  },
+  {
+    "id": "ljm",
+    "label": "柳建毛草",
+    "inh": "毛草",
+    "file": "fonts/liujianmaocao.ttf",
+    "license": "SIL OFL 1.1",
+    "source": "https://fonts.google.com/specimen/Liu+Jian+Mao+Cao",
+    "verified": true
+  },
+  {
+    "id": "lct",
+    "label": "龙藏体",
+    "inh": "行草",
+    "file": "fonts/longcang.ttf",
+    "license": "SIL OFL 1.1",
+    "source": "https://fonts.google.com/specimen/Long+Cang",
+    "verified": true
+  },
+  {
+    "id": "zkk",
+    "label": "站酷快乐",
+    "inh": "美术字",
+    "file": "fonts/zcoolkuaile.ttf",
+    "license": "SIL OFL 1.1",
+    "source": "https://fonts.google.com/specimen/ZCOOL+KuaiLe",
+    "verified": true
+  },
+  {
+    "id": "lxgw",
+    "label": "霞鹜文楷",
+    "inh": "手写楷",
+    "file": "fonts/lxgwwenkailite.ttf",
+    "license": "SIL OFL 1.1",
+    "source": "https://github.com/lxgw/LxgwWenKai-Lite",
+    "verified": true
+  },
+  {
+    "id": "marker",
+    "label": "霞鹜漫黑",
+    "inh": "马克笔",
+    "file": "fonts/markergothic.ttf",
+    "license": "SIL OFL 1.1",
+    "source": "https://github.com/lxgw/LxgwMarkerGothic",
+    "verified": true
+  },
+  {
+    "id": "hy",
+    "label": "庆科黄油",
+    "inh": "圆黑",
+    "file": "fonts/zcoolhuangyou.ttf",
+    "license": "SIL OFL 1.1",
+    "source": "https://fonts.google.com/specimen/ZCOOL+QingKe+HuangYou",
+    "verified": true
+  },
+  {
+    "id": "yozai",
+    "label": "悠哉字体",
+    "inh": "硬笔手写",
+    "file": "fonts/yozai.ttf",
+    "license": "SIL OFL 1.1",
+    "source": "https://github.com/lxgw/yozai-font",
+    "verified": true
+  },
+  {
+    "id": "xw",
+    "label": "站酷小薇",
+    "inh": "清瘦宋",
+    "file": "fonts/zcoolxiaowei.ttf",
+    "license": "SIL OFL 1.1",
+    "source": "https://fonts.google.com/specimen/ZCOOL+XiaoWei",
+    "verified": true
+  },
+  {
+    "id": "smiley",
+    "label": "得意黑",
+    "inh": "潮流斜黑",
+    "file": "fonts/SmileySans-Oblique.ttf",
+    "license": "SIL OFL 1.1",
+    "source": "https://github.com/atelier-anchor/smiley-sans",
+    "verified": true
+  }
+]
