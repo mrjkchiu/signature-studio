@@ -26,6 +26,7 @@ cd /root/workspace/prototype && python3 -m http.server 8765 --bind 0.0.0.0
 
 - **中文签名**：本项目自研引擎（艺术字体骨架提取 + 笔锋 + 中文逐笔书写）
 - **英文签名 · 移植版**：完整移植 [tyx-signature](https://github.com/tangyx527/tyx-signature)（MIT）的
+  **单人 / 情侣两种模式**（情侣：两个名字上下排列、同步书写、各自墨色），默认名 `JKChiu`；以及
   TYX Brush 笔刷引擎与动效：逐字母书写、压力模型、收笔花体、矢量装饰（太阳/猫/爱心/星星，
   带眨眼/折耳）、光点入场与离场、下划线 lift、发光、画幅/时长/背景可调。
 

@@ -164,9 +164,16 @@
     <!-- ================= 英文签名 · 移植版 ================= -->
     <div id="portPanel" style="display:none;flex-direction:column;gap:12px;">
       <div class="row">
-        <input id="portName" type="text" value="Chen Ming" maxlength="24" placeholder="English name" />
+        <input id="portName" type="text" value="JKChiu" maxlength="24" placeholder="English name" />
         <button class="primary" id="portPlay">重播</button>
       </div>
+      <div class="group"><label>模式</label>
+        <div class="chips" id="portMode"></div>
+        <input id="portName2" type="text" placeholder="第二个名字（情侣模式）" maxlength="20" hidden
+          style="height:40px;border-radius:11px;border:1px solid var(--stroke);background:var(--panel);color:var(--text);padding:0 12px;font-size:14px;" />
+        <span class="hint">情侣模式：两个名字上下排列、同步书写</span>
+      </div>
+      <div class="group"><label>第二人墨色</label><div class="chips" id="portInk2"></div></div>
       <div class="group"><label>画幅</label><div class="chips" id="portAspect"></div></div>
       <div class="group"><label>字号</label><div class="chips" id="portSize"></div></div>
       <div class="group"><label>笔宽</label><div class="chips" id="portPen"></div></div>

@@ -7,7 +7,7 @@ const DEG = Math.PI / 180;
 export const METRICS_DEFAULT = { xHeight: 300 };
 
 export const PORT_DEFAULTS = {
-  text: 'Chen Ming',
+  text: 'JKChiu',
   font: { size: 240, penWidth: 1, pressure: 1, initialScale: 1.3, initialOffsetX: 0, initialOffsetY: 0, terminalLength: 1 },
   ink: '#F5FFFD',
   glow: { on: true, color: '#59E6D7', strength: 0.65, radius: 18 },
@@ -38,13 +38,47 @@ function rotate(p, deg, around = { x: 0, y: 0 }) {
 /** 构建场景：笔迹、装饰位置、下划线、阶段时间 */
 export function buildPortScene(cfg, W, H) {
   const c = cfg || PORT_DEFAULTS;
-  const brush = buildBrush({ text: c.text, font: c.font });
-  const box = brush.box;
+  const couple = !!(c.couple && c.coupleName && c.coupleName.trim());
+  const fontB = c.coupleFont || c.font;
+
+  const brushA = buildBrush({ text: (c.text || 'JKChiu'), font: c.font });
+  const brushB = couple ? buildBrush({ text: c.coupleName, font: fontB }) : null;
+
+  const gap = c.font.size * (c.coupleGap != null ? c.coupleGap : 0.55);
+  const bA = brushA.box, bB = brushB ? brushB.box : null;
+  const wA = bA.maxX - bA.minX, wB = bB ? bB.maxX - bB.minX : 0;
+  const maxW = Math.max(wA, wB);
+
+  // 世界坐标：A 在上，B 在下并各自居中
+  const offA = { dx: -bA.minX + (maxW - wA) / 2, dy: -bA.minY };
+  const offB = bB ? { dx: -bB.minX + (maxW - wB) / 2, dy: -bB.minY + (bA.maxY - bA.minY) + gap } : null;
+
+  const lines = [
+    { brush: brushA, ink: c.ink, glowColor: c.glow.color, off: offA, cfg: c },
+  ];
+  if (brushB) {
+    lines.push({
+      brush: brushB,
+      ink: c.coupleInk || c.ink,
+      glowColor: c.coupleGlow || c.glow.color,
+      off: offB,
+      cfg: { ...c, font: fontB, ink: c.coupleInk || c.ink },
+    });
+  }
+
+  // 合并包围盒（含两行）
+  let box = {
+    minX: Math.min(bA.minX + offA.dx, bB ? bB.minX + offB.dx : Infinity),
+    maxX: Math.max(bA.maxX + offA.dx, bB ? bB.maxX + offB.dx : -Infinity),
+    minY: Math.min(bA.minY + offA.dy, bB ? bB.minY + offB.dy : Infinity),
+    maxY: Math.max(bA.maxY + offA.dy, bB ? bB.maxY + offB.dy : -Infinity),
+  };
+
   const width = box.maxX - box.minX, height = box.maxY - box.minY;
   const rotation = 5;
   const pivot = { x: (box.minX + box.maxX) / 2, y: (box.minY + box.maxY) / 2 };
 
-  // 装饰：放在字上方偏右
+  // 装饰：放在整体上方偏右
   const radius = width * (c.decoration.id === 'cat' ? 0.125 : 0.085) * c.decoration.scale * 2.2;
   const decoBottomBase = c.decoration.id === 'sun' ? 85 : c.decoration.id === 'cat' ? 38 : 58;
   const deco = {
@@ -53,7 +87,7 @@ export function buildPortScene(cfg, W, H) {
     radius,
   };
 
-  // 下划线
+  // 下划线放在整组下方
   const base = box.maxY + Math.max(c.font.size * 0.14, height * 0.10);
   const line = cubicPts(
     { x: box.minX + width * 0.06, y: base + c.font.size * 0.02 },
@@ -80,8 +114,8 @@ export function buildPortScene(cfg, W, H) {
   const tx = W / 2 - ((minX + maxX) / 2) * scale;
   const ty = H / 2 - ((minY + maxY) / 2) * scale;
 
-  // 阶段（对应 timeline.ts 的 makePlan）
-  const natural = brush.duration;
+  // 阶段：两人同步书写（按各自自然时长归一化，同时结束）
+  const natural = Math.max(brushA.duration, brushB ? brushB.duration : 0);
   const lead = c.comet.on ? 0.15 : 0;
   const decoDur = c.decoration.id === 'none' ? 0 : 0.65;
   const lineDur = c.underline.on ? 0.35 : 0;
@@ -104,9 +138,16 @@ export function buildPortScene(cfg, W, H) {
   holdP.end = Math.max(holdP.start + hold, c.timing.mode === 'duration' ? c.timing.duration : clock);
   const total = c.timing.mode === 'duration' ? c.timing.duration : holdP.end;
 
+  const firstStrokePoint = (() => {
+    const s0 = brushA.strokes[0];
+    if (!s0) return { x: box.minX, y: box.minY };
+    const p0 = s0.curve.points[0];
+    return { x: p0.x + offA.dx, y: p0.y + offA.dy };
+  })();
+
   return {
-    cfg: c, W, H, brush, box, rotation, pivot, deco, line, leaving,
-    scale, tx, ty, natural,
+    cfg: c, W, H, couple, brush: brushA, box, lines, rotation, pivot, deco, line, leaving,
+    scale, tx, ty, natural, firstStrokePoint,
     phases: { lead: leadP, writing: writeP, decoration: decoP, underline: lineP, leaving: leaveP, wink: winkP, hold: holdP },
     total,
   };
@@ -141,8 +182,7 @@ export function renderPortFrame(ctx, scene, time) {
   if (c.comet.on && time < p.lead.end + 0.12) {
     const u = clamp((time - p.lead.start) / Math.max(p.lead.end - p.lead.start, 0.001), 0, 1);
     const e = smooth(u);
-    const first = brush.strokes[0];
-    const startPt = first ? first.curve.points[0] : { x: scene.box.minX, y: 0 };
+    const startPt = scene.firstStrokePoint || { x: scene.box.minX, y: 0 };
     const from = { x: startPt.x - scene.box.maxX * 0.7 - 420, y: startPt.y - 260 };
     const mid = { x: startPt.x - 220, y: startPt.y - 320 };
     const head = { x: from.x + (startPt.x - from.x) * e, y: (1 - e) * (1 - e) * from.y + 2 * (1 - e) * e * mid.y + e * e * startPt.y };
@@ -170,25 +210,33 @@ export function renderPortFrame(ctx, scene, time) {
     });
   }
 
-  // ---------- 书写 ----------
-  const writeTime = clamp((time - p.writing.start) / Math.max(p.writing.end - p.writing.start, 0.001), 0, 1);
-  // 阶段按自然时长映射到书写阶段
-  const scaleT = (p.writing.end - p.writing.start) / Math.max(brush.duration, 0.001);
+  // ---------- 书写（情侣模式下两行同步书写） ----------
+  const writeSpan = Math.max(p.writing.end - p.writing.start, 0.001);
   apply(scene, ctx, () => {
-    const glowOn = c.glow.on && c.glow.strength > 0;
-    for (const s of brush.strokes) {
-      const st = s.start * scaleT, du = s.duration * scaleT;
-      const prog = clamp((time - p.writing.start - st) / Math.max(du, 0.001), 0, 1);
-      if (prog <= 0) continue;
-      if (glowOn) {
-        ctx.save();
-        ctx.shadowColor = c.glow.color;
-        ctx.shadowBlur = c.glow.radius * c.glow.strength * 1.6;
-        ctx.globalAlpha = 0.55;
-        drawStrokeRibbon(ctx, s, prog, c, c.glow.color);
-        ctx.restore();
+    for (const lineDef of scene.lines) {
+      const brush = lineDef.brush;
+      const durScale = writeSpan / Math.max(brush.duration, 0.001);
+      const ink = lineDef.ink;
+      const glowColor = lineDef.glowColor || c.glow.color;
+      ctx.save();
+      ctx.translate(lineDef.off.dx, lineDef.off.dy);
+      const glowOn = c.glow.on && c.glow.strength > 0;
+      for (const st of brush.strokes) {
+        const s0 = st.start * durScale;
+        const du = st.duration * durScale;
+        const prog = clamp((time - p.writing.start - s0) / Math.max(du, 0.001), 0, 1);
+        if (prog <= 0) continue;
+        if (glowOn) {
+          ctx.save();
+          ctx.shadowColor = glowColor;
+          ctx.shadowBlur = c.glow.radius * c.glow.strength * 1.6;
+          ctx.globalAlpha = 0.55;
+          drawStrokeRibbon(ctx, st, prog, lineDef.cfg, glowColor);
+          ctx.restore();
+        }
+        drawStrokeRibbon(ctx, st, prog, lineDef.cfg, ink);
       }
-      drawStrokeRibbon(ctx, s, prog, c, c.ink);
+      ctx.restore();
     }
   });
 
@@ -257,7 +305,7 @@ export function renderPortFrame(ctx, scene, time) {
       ctx.restore();
     });
   }
-  return { writeTime };
+  return { time };
 }
 
 export function portProgress(scene, time) {

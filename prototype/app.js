@@ -18,7 +18,7 @@ const state = {
   decoXY: { x: 0.80, y: 0.24 },
   // 移植版引擎
   port: {
-    text: 'Chen Ming', aspect: '16:9',
+    text: 'JKChiu', aspect: '16:9', couple: false, coupleName: 'Yuliang', coupleInk: '#FF8EC7',
     fontSize: 240, penWidth: 1, pressure: 1, initialScale: 1.3, terminalLength: 1,
     ink: '#F5FFFD', glowOn: true, glowColor: '#59E6D7',
     deco: 'sun', decoScale: 1, wink: true, earFold: true,
@@ -247,7 +247,11 @@ function portCfg() {
   const p = state.port;
   return {
     ...PORT.PORT_DEFAULTS,
-    text: (p.text || '').trim() || 'Chen Ming',
+    text: (p.text || '').trim() || 'JKChiu',
+    couple: p.couple && !!(p.coupleName || '').trim(),
+    coupleName: (p.coupleName || '').trim() || 'Yuliang',
+    coupleInk: p.coupleInk || '#FF8EC7',
+    coupleGap: 0.55,
     font: {
       size: p.fontSize, penWidth: p.penWidth, pressure: p.pressure,
       initialScale: p.initialScale, initialOffsetX: 0, initialOffsetY: 0, terminalLength: p.terminalLength,
@@ -437,6 +441,24 @@ function buildPortChips() {
     const el = $(id); el.innerHTML = '';
     for (const it of items) el.appendChild(chip(it.label, cur === it.v, () => { fn(it.v); buildPortChips(); rebuildPort(); }));
   };
+  const pm = $('portMode');
+  if (pm) {
+    pm.innerHTML = '';
+    pm.appendChild(chip('单人', !p.couple, () => { p.couple = false; buildPortChips(); rebuildPort(); }));
+    pm.appendChild(chip('情侣', p.couple, () => { p.couple = true; buildPortChips(); rebuildPort(); }));
+    const n2 = $('portName2');
+    if (n2) { n2.hidden = !p.couple; if (!n2.value) n2.value = p.coupleName; }
+  }
+  const pi2 = $('portInk2');
+  if (pi2) {
+    pi2.innerHTML = '';
+    for (const [c, l] of [['#FF8EC7', '粉'], ['#6EE7F5', '青'], ['#F4D58D', '金'], ['#F5FFFD', '白']]) {
+      pi2.appendChild(chip(`<i class="sw" style="background:${c}"></i>${l}`, p.coupleInk === c, () => {
+        p.coupleInk = c; buildPortChips(); rebuildPort();
+      }));
+    }
+  }
+
   rep('portAspect', [
     { v: '16:9', label: '横 16:9' }, { v: '9:16', label: '竖 9:16' }, { v: '1:1', label: '方 1:1' },
   ], p.aspect, (v) => { p.aspect = v; applyStageSize(); resize(); });
@@ -754,6 +776,16 @@ async function main() {
     clearTimeout(buildTimer); buildTimer = setTimeout(rebuildCn, 320);
   });
 
+  const portName2 = $('portName2');
+  if (portName2) {
+    portName2.addEventListener('input', () => {
+      const v = portName2.value.slice(0, 20);
+      if (v === state.port.coupleName) return;
+      state.port.coupleName = v;
+      clearTimeout(buildTimer);
+      buildTimer = setTimeout(() => { if (state.tab === 'port') rebuildPort(); }, 280);
+    });
+  }
   const portName = $('portName');
   portName.value = state.port.text;
   portName.addEventListener('input', () => {
