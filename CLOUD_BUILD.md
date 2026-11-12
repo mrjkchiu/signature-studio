@@ -138,4 +138,12 @@ WebView 默认不允许 `file://` 页面发 fetch，所以 `MainActivity` 用
 2. 它的云电脑能否访问 `dl.google.com`（不能的话要换 Maven 镜像或让它在云端装 SDK 后缓存）
 3. 是否允许它执行 sudo（装 JDK/SDK 需要）
 
-CI 版本（GitHub Actions 等）也可以直接复用 §2–§4 的命令。
+## 9. 兜底：GitHub Actions 自动出包（不依赖 Muse）
+
+仓库里已带 `.github/workflows/build-apk.yml`：
+代码推到 GitHub 的 `main` 分支后，Actions 会自动拉素材、构建，并把 `app-debug.apk`
+挂在本次运行的 **Artifacts** 里（保留 14 天）。
+在 Actions 页面点开最近一次运行 → 页面底部 `signature-studio-debug-apk` 下载即可。
+想手动触发：Actions → build-apk → Run workflow。
+
+> 条件：仓库是 public，或你自己的账号跑的 Actions；免费额度对个人项目足够。
