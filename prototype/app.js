@@ -18,7 +18,7 @@ const state = {
   decoXY: { x: 0.80, y: 0.24 },
   // 移植版引擎
   port: {
-    text: 'JKChiu', aspect: '16:9', couple: false, coupleName: 'Yuliang', coupleInk: '#FF8EC7',
+    text: 'JKChiu', aspect: '16:9', couple: false, coupleName: '', coupleInk: '#FF8EC7',
     fontSize: 240, penWidth: 1, pressure: 1, initialScale: 1.3, terminalLength: 1,
     ink: '#F5FFFD', glowOn: true, glowColor: '#59E6D7',
     deco: 'sun', decoScale: 1, wink: true, earFold: true,
@@ -249,7 +249,7 @@ function portCfg() {
     ...PORT.PORT_DEFAULTS,
     text: (p.text || '').trim() || 'JKChiu',
     couple: p.couple && !!(p.coupleName || '').trim(),
-    coupleName: (p.coupleName || '').trim() || 'Yuliang',
+    coupleName: (p.coupleName || '').trim(),
     coupleInk: p.coupleInk || '#FF8EC7',
     coupleGap: 0.55,
     font: {
@@ -445,9 +445,22 @@ function buildPortChips() {
   if (pm) {
     pm.innerHTML = '';
     pm.appendChild(chip('单人', !p.couple, () => { p.couple = false; buildPortChips(); rebuildPort(); }));
-    pm.appendChild(chip('情侣', p.couple, () => { p.couple = true; buildPortChips(); rebuildPort(); }));
+    pm.appendChild(chip('情侣', p.couple, () => {
+      p.couple = true; buildPortChips(); rebuildPort();
+      if (!(p.coupleName || '').trim()) toast('情侣模式：请先输入第二个名字');
+    }));
     const n2 = $('portName2');
-    if (n2) { n2.hidden = !p.couple; if (!n2.value) n2.value = p.coupleName; }
+    if (n2) { n2.hidden = !p.couple; n2.value = p.coupleName || ''; }
+  }
+  const mh = $('portModeHint');
+  if (mh) {
+    if (p.couple && !(p.coupleName || '').trim()) {
+      mh.textContent = '⚠️ 请输入第二个名字，否则只显示单人签名';
+      mh.style.color = 'var(--accent)';
+    } else {
+      mh.textContent = '情侣模式：两个名字上下排列、同步书写';
+      mh.style.color = '';
+    }
   }
   const pi2 = $('portInk2');
   if (pi2) {
