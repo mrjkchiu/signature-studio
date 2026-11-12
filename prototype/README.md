@@ -22,6 +22,13 @@ http://<手机IP>:8765/
 cd /root/workspace/prototype && python3 -m http.server 8765 --bind 0.0.0.0
 ```
 
+## 两个 Tab
+
+- **中文签名**：本项目自研引擎（艺术字体骨架提取 + 笔锋 + 中文逐笔书写）
+- **英文签名 · 移植版**：完整移植 [tyx-signature](https://github.com/tangyx527/tyx-signature)（MIT）的
+  TYX Brush 笔刷引擎与动效：逐字母书写、压力模型、收笔花体、矢量装饰（太阳/猫/爱心/星星，
+  带眨眼/折耳）、光点入场与离场、下划线 lift、发光、画幅/时长/背景可调。
+
 ## 能玩什么
 
 - **改名**：输入框输入任意中文名（最多 8 字），自动重算并播放

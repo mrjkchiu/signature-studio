@@ -13,6 +13,13 @@ App 图标中的「签名」图形取自 **Tabler Icons**（MIT License）
 
 生成脚本：`prototype/tools/make-icon-final.mjs`（渐变底色为程序化生成，非第三方素材）。
 
+## 移植代码
+**tyx-signature**（MIT License）—— https://github.com/tangyx527/tyx-signature
+- 移植范围：`prototype/port/` 下的 TYX Brush 笔刷引擎（positional 笔画数据、压力模型、缎带绘制）、
+  矢量装饰（太阳/猫/爱心/星星及眨眼/折耳动作）、时间轴阶段、光点入场/离场、下划线 lift
+- 原实现为 React + SVG，本项目改为 Canvas 重写
+- MIT 要求保留版权与许可声明，本文件即该声明
+
 ## 笔顺数据
 `hanzi-writer-data`（项目内已移除，仅由 `scripts/fetch-assets.mjs` 拉取）
 - 来源：https://github.com/chanind/hanzi-writer-data
