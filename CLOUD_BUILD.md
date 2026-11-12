@@ -147,3 +147,25 @@ WebView 默认不允许 `file://` 页面发 fetch，所以 `MainActivity` 用
 想手动触发：Actions → build-apk → Run workflow。
 
 > 条件：仓库是 public，或你自己的账号跑的 Actions；免费额度对个人项目足够。
+
+
+---
+
+## 10. Muse 专用
+
+仓库里 `muse/` 目录是给 Muse（或任何云端 Agent）用的：
+
+| 文件 | 用途 |
+| --- | --- |
+| `muse/signature-apk-builder/SKILL.md` | 技能说明：什么时候用、一条命令、常见失败处理 |
+| `muse/signature-apk-builder/bin/build-apk.sh` | 一键脚本：装依赖 → 拉素材 → 打包 → Gradle 构建 → 打印 APK 路径 |
+| `muse/PASTE-PROMPT.md` | 可直接粘给 Muse 的提示词 |
+
+放到 Muse 的技能目录即可复用：
+```bash
+cp -r muse/signature-apk-builder ~/workspace/custom-skills/
+```
+
+注意：**不需要为"clone 公开仓库 + 本地构建"建 connector**。
+只有当你想让 Muse 把 APK 自动上传到 GitHub Releases / 网盘这类外部服务时，
+才需要按 Muse 的 custom-connector 流程申请凭证（`credentials.request_api_access`）。
