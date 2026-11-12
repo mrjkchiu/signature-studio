@@ -51,6 +51,18 @@ jobs:
           cp android/app/build/outputs/apk/debug/app-debug.apk "signature-studio-latest.apk"
           ls -lh signature-studio-*.apk
 
+      - name: 失败时提交构建日志（便于远程排查）
+        if: failure()
+        run: |
+          cd android
+          ./gradlew assembleDebug --no-daemon --stacktrace > ../ci-build-error.log 2>&1 || true
+          cd ..
+          git config user.name "ci-bot"
+          git config user.email "ci@local"
+          git checkout -B ci-logs
+          git add -f ci-build-error.log
+          git commit -m "ci: build error log" || true
+          git push -f origin ci-logs
       - name: 发布 Release
         uses: softprops/action-gh-release@v2
         with:
