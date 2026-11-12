@@ -264,6 +264,7 @@ function rebuildPort() {
 
 // ---------------- 装饰拖动 ----------------
 let dragDeco = false;
+let dragging = false;
 function canvasPoint(e) {
   const rect = cv.getBoundingClientRect();
   return {
@@ -272,17 +273,7 @@ function canvasPoint(e) {
   };
 }
 function setupDecoDrag() {
-  cv.addEventListener('pointerdown', (e) => {
-    if (state.tab !== 'cn' || !env || !scene || state.deco === 'none') return;
-    const p = canvasPoint(e);
-    const a = decoAnchor(scene, env.decor);
-    if (Math.hypot(p.x - a.x, p.y - a.y) < a.base * 0.9) {
-      dragDeco = true;
-      try { cv.setPointerCapture(e.pointerId); } catch (err) {}
-      e.preventDefault();
-    }
-  });
-  cv.addEventListener('pointermove', (e) => {
+  const onMove = (e) => {
     if (!dragDeco || !env || !scene) return;
     const p = canvasPoint(e);
     state.decoXY = {
@@ -290,12 +281,29 @@ function setupDecoDrag() {
       y: Math.min(0.96, Math.max(0.04, p.y / H)),
     };
     env.decor = { ...env.decor, decoXY: state.decoXY };
+    renderNow();               // 拖动过程中立即重绘
+    e.preventDefault();
+  };
+  const onUp = () => {
+    dragDeco = false; dragging = false;
+    window.removeEventListener('pointermove', onMove);
+    window.removeEventListener('pointerup', onUp);
+    window.removeEventListener('pointercancel', onUp);
+  };
+  cv.addEventListener('pointerdown', (e) => {
+    if (state.tab !== 'cn' || !env || !scene || state.deco === 'none') return;
+    const p = canvasPoint(e);
+    const a = decoAnchor(scene, env.decor);
+    const hit = Math.max(a.base * 1.25, Math.min(W, H) * 0.10);
+    if (Math.hypot(p.x - a.x, p.y - a.y) > hit) return;
+    dragDeco = true; dragging = true;
+    try { cv.setPointerCapture(e.pointerId); } catch (err) {}
+    // 监听 window：手机上手指出画布也不会中断拖动
+    window.addEventListener('pointermove', onMove, { passive: false });
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onUp);
     e.preventDefault();
   });
-  const end = () => { dragDeco = false; };
-  cv.addEventListener('pointerup', end);
-  cv.addEventListener('pointercancel', end);
-  cv.addEventListener('pointerleave', end);
 }
 
 // ---------------- 主循环 ----------------
@@ -433,9 +441,11 @@ function buildPortChips() {
     { v: 0.7, label: '细' }, { v: 1, label: '中' }, { v: 1.4, label: '粗' },
   ], p.penWidth, (v) => { p.penWidth = v; });
   rep('portPressure', [
-    { v: 0.4, label: '压力 低' }, { v: 0.7, label: '压力 中' }, { v: 1, label: '压力 高' },
-    { v: 1.0, label: '首字母 1.0' }, { v: 1.3, label: '首字母 1.3' }, { v: 1.5, label: '首字母 1.5' },
-  ], p.pressure, (v) => { if (v <= 1) p.pressure = v; else p.initialScale = v; });
+    { v: 0.2, label: '低' }, { v: 0.55, label: '中' }, { v: 1, label: '高' },
+  ], p.pressure, (v) => { p.pressure = v; });
+  rep('portInitial', [
+    { v: 1.0, label: '1.0×' }, { v: 1.3, label: '1.3×' }, { v: 1.6, label: '1.6×' },
+  ], p.initialScale, (v) => { p.initialScale = v; });
   rep('portTerminal', [
     { v: 0.6, label: '短' }, { v: 1, label: '中' }, { v: 1.5, label: '长' },
   ], p.terminalLength, (v) => { p.terminalLength = v; });

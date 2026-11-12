@@ -92,6 +92,11 @@ cd /root/workspace/prototype && python3 -m http.server 8765 --bind 0.0.0.0
 ## 自检工具
 
 ```bash
+node tools/verify-port.mjs   # 移植版各参数是否真的影响输出（墨迹占比对比 + 对比图）
+```
+
+
+```bash
 node tools/diff.mjs      # 覆盖率诊断 + 每套字体骨架耗时
 node tools/verify.mjs    # 输出 25%/50%/75%/100% 四关键帧拼图到 tools/frames/
 ```
