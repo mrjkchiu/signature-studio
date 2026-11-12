@@ -540,21 +540,36 @@ export function drawBackdrop(ctx, scene, backdropId) {
 }
 
 // ---------- 合成 ----------
-function blurredDraw(ctx, img, W, H, blurPx, alpha) {
-  ctx.save();
-  ctx.globalAlpha = alpha;
+/**
+ * 廉价的发光：先在 1/3 分辨率上做模糊再放大。
+ * 手机上全分辨率逐帧 blur 是最大的性能杀手（824² 一次几十毫秒）。
+ */
+function blurredDraw(ctx, img, W, H, blurPx, alpha, env) {
+  const sc = 3;
+  const w = Math.max(1, Math.ceil(W / sc)), h = Math.max(1, Math.ceil(H / sc));
+  if (!env._g1) {
+    env._g1 = env.makeCanvas(w, h);
+    env._g1c = env._g1.getContext('2d');
+    env._g2 = env.makeCanvas(w, h);
+    env._g2c = env._g2.getContext('2d');
+  }
+  const g1 = env._g1c, g2 = env._g2c;
+  g1.setTransform(1, 0, 0, 1, 0, 0);
+  g1.clearRect(0, 0, w, h);
+  g1.drawImage(img, 0, 0, w, h);
+  g2.setTransform(1, 0, 0, 1, 0, 0);
+  g2.clearRect(0, 0, w, h);
   let filtered = false;
   try {
-    ctx.filter = `blur(${blurPx}px)`;
-    filtered = ctx.filter === `blur(${blurPx}px)`;
+    g2.filter = `blur(${Math.max(0.5, blurPx / sc)}px)`;
+    filtered = g2.filter.startsWith('blur');
   } catch (e) { filtered = false; }
-  if (!filtered) {
-    ctx.shadowColor = 'rgba(255,255,255,0.9)';
-    ctx.shadowBlur = blurPx * 1.6;
-    ctx.shadowOffsetX = 0;
-    ctx.shadowOffsetY = 0;
-  }
-  ctx.drawImage(img, 0, 0, W, H);
+  if (!filtered) g2.filter = 'none';
+  g2.drawImage(env._g1, 0, 0);
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.imageSmoothingEnabled = true;
+  ctx.drawImage(env._g2, 0, 0, w, h, 0, 0, W, H);
   ctx.restore();
 }
 
@@ -562,6 +577,24 @@ export function renderFrame(env, t) {
   const { ctx, scene, glyphCanvas, maskCanvas, tempCanvas, painter, params, palette, backdropId } = env;
   const { W, H } = scene;
   const tctx = tempCanvas.getContext('2d');
+
+  // ---- 静止态快路径 ----
+  // 写完后直接画完整字形：既保证"不出现笔画空缺"，也省掉每帧的遮罩合成与遮罩绘制。
+  if (t >= scene.writeEnd + 360) {
+    drawBackdrop(ctx, scene, backdropId);
+    ctx.save();
+    if (params.neon || palette.glowR > 0) {
+      const pulse = params.neon ? 0.62 + 0.38 * (0.5 + 0.5 * Math.sin(t / 260)) : 1;
+      ctx.globalCompositeOperation = 'lighter';
+      const radius = (params.neon ? palette.glowR * 1.9 : palette.glowR * 0.55) * pulse;
+      blurredDraw(ctx, glyphCanvas, W, H, radius, params.neon ? 0.9 : 0.28, env);
+      ctx.globalCompositeOperation = 'source-over';
+    }
+    ctx.drawImage(glyphCanvas, 0, 0);
+    ctx.restore();
+    if (env.decor) drawDecorations({ ctx, scene, cfg: env.decor, t, palette, start: scene.writeEnd + 100 });
+    return { tips: [] };
+  }
 
   const tips = painter.paint(t);
   painter.paintFallback(scene, t);
@@ -589,9 +622,9 @@ export function renderFrame(env, t) {
   tctx.globalCompositeOperation = 'source-over';
 
   // 收笔补齐：骨架遮罩会漏掉极少数边缘细缝，末段淡入完整字形，保证成品 100% 完整
-  const settleStart = scene.writeEnd - 80;
+  const settleStart = scene.writeEnd - 140;
   if (t > settleStart) {
-    const k = clamp((t - settleStart) / 320, 0, 1);
+    const k = clamp((t - settleStart) / 260, 0, 1);
     tctx.save();
     tctx.globalAlpha = k;
     tctx.drawImage(glyphCanvas, 0, 0);
@@ -648,7 +681,7 @@ export function renderFrame(env, t) {
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
     const radius = (params.neon ? palette.glowR * 1.9 : palette.glowR * 0.55) * pulse;
-    blurredDraw(ctx, tempCanvas, W, H, radius, params.neon ? 0.9 : 0.28);
+    blurredDraw(ctx, tempCanvas, W, H, radius, params.neon ? 0.9 : 0.28, env);
     ctx.restore();
   }
   ctx.drawImage(tempCanvas, 0, 0);

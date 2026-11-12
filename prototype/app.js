@@ -34,6 +34,48 @@ let t0 = 0;
 let fpsFrames = 0, fpsLast = 0, fps = 0;
 let rebuildTimer = 0;
 let buildToken = 0;
+let settled = false;
+let frameNo = 0;
+
+function toast(msg) {
+  const el = $('toast');
+  if (!el) return;
+  el.textContent = msg;
+  el.dataset.show = '1';
+  clearTimeout(toast._t);
+  toast._t = setTimeout(() => { el.dataset.show = '0'; }, 2200);
+}
+
+/** 只改外观（配色/背景/动效开关/装饰/落款）：不重播，当前画面即时更新 */
+function restyle() {
+  if (!env || !scene) { rebuild(); return; }
+  const palette = paletteOf(state.paletteId);
+  env.palette = palette;
+  env.backdropId = state.backdropId;
+  env.decor = decorCfg();
+  env.params.enter = state.fx.has('enter');
+  env.params.shine = state.fx.has('shine');
+  env.params.neon = state.fx.has('neon');
+  env.params.trail = state.fx.has('trail');
+  env.params.particle = state.fx.has('particle');
+  // 字形层的渐变换色要重画一次（很便宜）
+  R.renderGlyphLayer(glyphCanvas, scene, palette);
+  settled = false;
+}
+
+function decorCfg() {
+  const isCouple = state.couple && !!state.text2;
+  return {
+    couple: isCouple,
+    deco: state.deco,
+    decoSize: state.decoSize,
+    decoPos: state.decoPos,
+    seal: state.seal,
+    sealText: state.sealText,
+    date: state.date,
+    underline: state.underline,
+  };
+}
 
 const $ = (id) => document.getElementById(id);
 const stage = $('stage');
@@ -54,8 +96,6 @@ const loadedFonts = new Set();
 
 async function ensureFont(font) {
   if (loadedFonts.has(font.id)) return true;
-  $('loading').hidden = false;
-  $('loading').textContent = `正在加载字体「${font.label}」…`;
   try {
     const face = new FontFace(font.css, `url(${font.file})`);
     await face.load();
@@ -88,8 +128,8 @@ function setBusy(on, text) {
 // ---------- 画布尺寸 ----------
 function resize() {
   const rect = stage.getBoundingClientRect();
-  const dpr = Math.min(window.devicePixelRatio || 1, 2);
-  const px = Math.max(240, Math.round(Math.min(rect.width, rect.height || rect.width) * dpr));
+  const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
+  const px = Math.min(900, Math.max(240, Math.round(Math.min(rect.width, rect.height || rect.width) * dpr)));
   if (px === W) return false;
   W = H = px;
   cv.width = W; cv.height = H;
@@ -112,7 +152,7 @@ async function rebuild() {
 
   const okFont = await ensureFont(font);
   if (token !== buildToken) return;
-  if (okFont) $('loading').hidden = true;
+  if (!okFont) toast('字体加载失败，已用默认字体');
 
   await Promise.all([...text].map(ensureChar));
   if (token !== buildToken) return;
@@ -147,16 +187,7 @@ async function rebuild() {
     ctx, scene, glyphCanvas, maskCanvas, tempCanvas, makeCanvas,
     painter, particles, palette,
     backdropId: state.backdropId,
-    decor: {
-      couple: isCouple,
-      deco: state.deco,
-      decoSize: state.decoSize,
-      decoPos: state.decoPos,
-      seal: state.seal,
-      sealText: state.sealText,
-      date: state.date,
-      underline: state.underline,
-    },
+    decor: decorCfg(),
     params: {
       enter: state.fx.has('enter'),
       shine: state.fx.has('shine'),
@@ -181,7 +212,11 @@ function replay() {
 function loop(now) {
   if (!env) { requestAnimationFrame(loop); return; }
   const t = now - t0;
-  R.renderFrame(env, t);
+  frameNo++;
+  settled = t >= scene.writeEnd + 400;
+  // 静止且没有持续动画时降频渲染，省电也省 CPU
+  const idle = settled && !env.params.neon && !env.params.particle && !env.params.shine && !env.decor;
+  if (!idle || frameNo % 6 === 0) R.renderFrame(env, t);
   $('bar').style.width = (R.globalProgress(scene, t) * 100).toFixed(1) + '%';
   fpsFrames++;
   if (now - fpsLast > 500) {
@@ -237,7 +272,7 @@ function buildChips() {
   for (const p of R.PALETTES) {
     const sw = `background:linear-gradient(135deg,${p.stops.join(',')});`;
     pc.appendChild(chip(`<i class="sw" style="${sw}"></i>${p.label}`, state.paletteId === p.id, () => {
-      state.paletteId = p.id; buildChips(); rebuild();
+      state.paletteId = p.id; buildChips(); restyle();
     }));
   }
 
@@ -245,7 +280,7 @@ function buildChips() {
   bc.innerHTML = '';
   for (const bd of R.BACKDROPS) {
     bc.appendChild(chip(bd.label, state.backdropId === bd.id, () => {
-      state.backdropId = bd.id; buildChips(); rebuild();
+      state.backdropId = bd.id; buildChips(); restyle();
     }));
   }
 
@@ -257,13 +292,7 @@ function buildChips() {
       if (fx.lock) return;
       if (state.fx.has(fx.id)) state.fx.delete(fx.id); else state.fx.add(fx.id);
       buildChips();
-      if (env) {
-        env.params.enter = state.fx.has('enter');
-        env.params.shine = state.fx.has('shine');
-        env.params.neon = state.fx.has('neon');
-        env.params.trail = state.fx.has('trail');
-        env.params.particle = state.fx.has('particle');
-      }
+      restyle();
     }));
   }
 
@@ -280,27 +309,27 @@ function buildChips() {
   if (dc2) {
     dc2.innerHTML = '';
     for (const d of DECOS) {
-      dc2.appendChild(chip(d.label, state.deco === d.id, () => { state.deco = d.id; buildChips(); rebuild(); }));
+      dc2.appendChild(chip(d.label, state.deco === d.id, () => { state.deco = d.id; buildChips(); restyle(); }));
     }
   }
   const dopt = $('decoOptChips');
   if (dopt) {
     dopt.innerHTML = '';
-    for (const o of DECO_SIZES) dopt.appendChild(chip('大小' + o.label, state.decoSize === o.id, () => { state.decoSize = o.id; buildChips(); rebuild(); }));
-    for (const o of DECO_POSITIONS) dopt.appendChild(chip('位置' + o.label, state.decoPos === o.id, () => { state.decoPos = o.id; buildChips(); rebuild(); }));
+    for (const o of DECO_SIZES) dopt.appendChild(chip('大小' + o.label, state.decoSize === o.id, () => { state.decoSize = o.id; buildChips(); restyle(); }));
+    for (const o of DECO_POSITIONS) dopt.appendChild(chip('位置' + o.label, state.decoPos === o.id, () => { state.decoPos = o.id; buildChips(); restyle(); }));
   }
   const sc = $('stampChips');
   if (sc) {
     sc.innerHTML = '';
-    for (const o of SEALS) sc.appendChild(chip(o.label, state.seal === o.id, () => { state.seal = o.id; buildChips(); rebuild(); }));
-    sc.appendChild(chip('落款日期', state.date, () => { state.date = !state.date; buildChips(); rebuild(); }));
+    for (const o of SEALS) sc.appendChild(chip(o.label, state.seal === o.id, () => { state.seal = o.id; buildChips(); restyle(); }));
+    sc.appendChild(chip('落款日期', state.date, () => { state.date = !state.date; buildChips(); restyle(); }));
     const si = $('sealText');
     if (si) { si.hidden = state.seal === 'none'; if (!si.value) si.value = state.sealText; }
   }
   const lc = $('lineChips');
   if (lc) {
     lc.innerHTML = '';
-    lc.appendChild(chip('下划线', state.underline, () => { state.underline = !state.underline; buildChips(); rebuild(); }));
+    lc.appendChild(chip('下划线', state.underline, () => { state.underline = !state.underline; buildChips(); restyle(); }));
   }
 
   const dc = $('durChips');
@@ -347,10 +376,7 @@ function makeExportEnv(background) {
   return {
     ctx: c.getContext('2d'), scene: s, glyphCanvas: g, maskCanvas: m, tempCanvas: tmp, makeCanvas,
     painter: p, particles: R.createParticleSystem(), palette, backdropId: background,
-    decor: {
-      couple: isCouple, deco: state.deco, decoSize: state.decoSize, decoPos: state.decoPos,
-      seal: state.seal, sealText: state.sealText, date: state.date, underline: state.underline,
-    },
+    decor: decorCfg(),
     params: { enter: false, shine: state.fx.has('shine'), neon: state.fx.has('neon'), trail: state.fx.has('trail'), particle: false },
   };
 }
@@ -359,17 +385,34 @@ function exportPNG(transparent) {
   try {
     const e = makeExportEnv(transparent ? 'none' : state.backdropId);
     R.renderFrame(e, e.scene.duration + 200);
-    e.ctx.canvas.toBlob((blob) => {
-      if (!blob) return;
+    const canvas = e.ctx.canvas;
+    const nameText = (state.couple && state.text2) ? state.text + state.text2 : (state.text || 'untitled');
+    const fileName = `签名_${nameText}${transparent ? '_透明' : ''}.png`;
+
+    // 1) Android 包壳：交给原生写入相册（WebView 里 <a download> 是没反应的）
+    if (window.AndroidApp && typeof window.AndroidApp.saveImage === 'function') {
+      const dataUrl = canvas.toDataURL('image/png');
+      const res = window.AndroidApp.saveImage(dataUrl, fileName);
+      if (String(res).startsWith('ok')) toast('已保存到相册 ✨');
+      else toast('保存失败：' + res);
+      return;
+    }
+
+    // 2) 浏览器：走下载
+    canvas.toBlob((blob) => {
+      if (!blob) { toast('导出失败：图片为空'); return; }
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
-      a.download = `签名_${state.text || 'untitled'}${transparent ? '_透明' : ''}.png`;
+      a.download = fileName;
+      document.body.appendChild(a);
       a.click();
-      setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+      toast('已导出 PNG');
     }, 'image/png');
   } catch (err) {
     console.error(err);
-    alert('导出失败：' + err.message);
+    toast('导出失败：' + err.message);
   }
 }
 

@@ -4,9 +4,9 @@
 
 ## 下载安装（Android 8+）
 
-**直链下载（公开、免登录、不过期）**
+**直链下载（公开、免登录、不过期，永远是最新构建）**
 
-<https://github.com/mrjkchiu/signature-studio/releases/latest/download/signature-studio-v0.1.1.apk>
+<https://github.com/mrjkchiu/signature-studio/releases/latest/download/signature-studio-latest.apk>
 
 装法：下载 → 允许「未知来源」→ 安装。debug 签名，包名 `com.dsh.signature`，约 64MB。
 完全离线，App 没有申请 INTERNET 权限。

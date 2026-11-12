@@ -359,10 +359,23 @@ export function orderSegmentsSimple(segments) {
  * 主入口：取某字在某字体下的骨架笔画（栅格坐标），带缓存
  * 返回 { segs: [ [[x,y],...] ], raster: {...} }
  */
-export function getSkeleton({ makeCanvas, fontStack, ch, kaiMediansRaster, size = 260 }) {
+function lsKey(fontStack, ch, size) { return `sk1|${fontStack}|${ch}|${size}`; }
+
+export function getSkeleton({ makeCanvas, fontStack, ch, kaiMediansRaster, size = 220 }) {
   const key = keyOf(fontStack, ch, size);
   const hit = CACHE.get(key);
   if (hit) return hit;
+
+  // 本地持久化：同名同字体再进来直接命中，不用再算骨架（手机上这是最大的卡顿来源）
+  try {
+    if (typeof localStorage !== 'undefined') {
+      const raw = localStorage.getItem(lsKey(fontStack, ch, size));
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && parsed.segs) { CACHE.set(key, parsed); return parsed; }
+      }
+    }
+  } catch (e) { /* 隐私模式等情况忽略 */ }
 
   const raster = rasterizeGlyph({ makeCanvas, fontStack, ch, size });
   if (!raster) { CACHE.set(key, null); return null; }
@@ -409,7 +422,20 @@ export function getSkeleton({ makeCanvas, fontStack, ch, kaiMediansRaster, size 
   const result = { segs: segsOut, raster };
   if (CACHE.size > CACHE_MAX) CACHE.clear();
   CACHE.set(key, result);
+  try {
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem(lsKey(fontStack, ch, size), JSON.stringify({ segs: result.segs }));
+    }
+  } catch (e) { /* 配额满就放弃持久化 */ }
   return result;
 }
 
 export function clearSkeletonCache() { CACHE.clear(); }
+
+/** 供浏览器把骨架缓存到 localStorage（同名字下次秒开） */
+export function peekSkeleton(fontStack, ch, size = 220) {
+  return CACHE.get(keyOf(fontStack, ch, size)) || null;
+}
+export function seedSkeleton(fontStack, ch, size, result) {
+  CACHE.set(keyOf(fontStack, ch, size), result);
+}

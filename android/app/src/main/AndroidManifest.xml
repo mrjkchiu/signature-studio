@@ -2,6 +2,10 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <!-- 故意不申请 INTERNET 权限：所有资源通过 WebViewAssetLoader 本地拦截加载 -->
+    <!-- Android 9 及以下保存图片到相册需要；10+ 走 MediaStore 不需要 -->
+    <uses-permission
+        android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="28" />
     <application
         android:allowBackup="false"
         android:hardwareAccelerated="true"

@@ -48,6 +48,7 @@ jobs:
         run: |
           VER="${GITHUB_REF_NAME:-manual}"
           cp android/app/build/outputs/apk/debug/app-debug.apk "signature-studio-${VER}.apk"
+          cp android/app/build/outputs/apk/debug/app-debug.apk "signature-studio-latest.apk"
           ls -lh signature-studio-*.apk
 
       - name: 发布 Release
