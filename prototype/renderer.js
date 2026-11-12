@@ -12,16 +12,12 @@
 import { getSkeleton, rasterLayout } from './skeleton.js';
 
 export const FONTS = [
-  { id: 'msz', label: '马善政', inh: '毛笔楷', css: 'SignatureMSZ', file: 'fonts/mashanzheng.ttf', brush: 1.00 },
   { id: 'zmx', label: '志莽行书', inh: '行书', css: 'SignatureZMX', file: 'fonts/zhimangxing.ttf', brush: 0.96 },
   { id: 'ljm', label: '柳建毛草', inh: '毛草', css: 'SignatureLJM', file: 'fonts/liujianmaocao.ttf', brush: 0.98 },
   { id: 'lct', label: '龙藏体', inh: '行草', css: 'SignatureLCT', file: 'fonts/longcang.ttf', brush: 0.94 },
-  { id: 'zkk', label: '站酷快乐', inh: '美术字', css: 'SignatureZKK', file: 'fonts/zcoolkuaile.ttf', brush: 0.90 },
   { id: 'lxgw', label: '霞鹜文楷', inh: '手写楷', css: 'SignatureLXGW', file: 'fonts/lxgwwenkailite.ttf', brush: 1.00 },
-  { id: 'marker', label: '霞鹜漫黑', inh: '马克笔', css: 'SignatureMarker', file: 'fonts/markergothic.ttf', brush: 1.00 },
   { id: 'hy', label: '庆科黄油', inh: '圆黑', css: 'SignatureHY', file: 'fonts/zcoolhuangyou.ttf', brush: 1.00 },
   { id: 'yozai', label: '悠哉字体', inh: '硬笔手写', css: 'SignatureYozai', file: 'fonts/yozai.ttf', brush: 1.00 },
-  { id: 'xw', label: '站酷小薇', inh: '清瘦宋', css: 'SignatureXW', file: 'fonts/zcoolxiaowei.ttf', brush: 1.00 },
   { id: 'smiley', label: '得意黑', inh: '潮流斜黑', css: 'SignatureSmiley', file: 'fonts/SmileySans-Oblique.ttf', brush: 1.00 },
 ];
 
@@ -39,6 +35,14 @@ export const BACKDROPS = [
   { id: 'paper', label: '宣纸' },
   { id: 'dark', label: '深夜' },
   { id: 'grad', label: '极光' },
+  { id: 'ink', label: '墨绿' },
+  { id: 'dusk', label: '暮紫' },
+  { id: 'ember', label: '暖橙' },
+  { id: 'space', label: '深空' },
+  { id: 'denim', label: '牛仔' },
+  { id: 'sakura', label: '樱粉' },
+  { id: 'grid', label: '网格' },
+  { id: 'rice', label: '米纸' },
 ];
 
 export const EFFECTS = [
@@ -531,17 +535,54 @@ export function drawBackdrop(ctx, scene, backdropId) {
     ctx.fillRect(0, 0, W, H);
     return;
   }
-  const lg = ctx.createLinearGradient(0, 0, W, H);
-  lg.addColorStop(0, '#16162A');
-  lg.addColorStop(0.55, '#1B2340');
-  lg.addColorStop(1, '#2A1030');
-  ctx.fillStyle = lg;
-  ctx.fillRect(0, 0, W, H);
-  const rg = ctx.createRadialGradient(W * 0.7, H * 0.25, 0, W * 0.7, H * 0.25, W * 0.6);
-  rg.addColorStop(0, 'rgba(80,160,255,0.18)');
-  rg.addColorStop(1, 'rgba(80,160,255,0)');
-  ctx.fillStyle = rg;
-  ctx.fillRect(0, 0, W, H);
+  const two = (c1, c2, a = 0) => {
+    const g = ctx.createLinearGradient(a ? 0 : 0, 0, a ? W : W, H);
+    g.addColorStop(0, c1); g.addColorStop(1, c2);
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  };
+  const glowDot = (x, y, r, color) => {
+    const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+    g.addColorStop(0, color); g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  };
+  if (backdropId === 'grad') { two('#16162A', '#2A1030'); glowDot(W * 0.7, H * 0.25, W * 0.6, 'rgba(80,160,255,0.18)'); return; }
+  if (backdropId === 'ink') { two('#0B1F1A', '#04100C'); glowDot(W * 0.3, H * 0.7, W * 0.7, 'rgba(60,180,140,0.16)'); return; }
+  if (backdropId === 'dusk') { two('#241B3A', '#0E0A1A'); glowDot(W * 0.7, H * 0.2, W * 0.7, 'rgba(150,100,255,0.20)'); return; }
+  if (backdropId === 'ember') { two('#3A1F12', '#160A06'); glowDot(W * 0.5, H * 0.85, W * 0.8, 'rgba(255,140,60,0.22)'); return; }
+  if (backdropId === 'space') {
+    two('#05060F', '#0B1024');
+    for (let i = 0; i < Math.round(W * H / 9000); i++) {
+      const x = Math.random() * W, y = Math.random() * H;
+      ctx.fillStyle = `rgba(255,255,255,${0.25 + Math.random() * 0.5})`;
+      ctx.fillRect(x, y, Math.random() < 0.1 ? 2 : 1, Math.random() < 0.1 ? 2 : 1);
+    }
+    glowDot(W * 0.75, H * 0.2, W * 0.5, 'rgba(80,120,255,0.20)');
+    return;
+  }
+  if (backdropId === 'denim') { two('#1B2A44', '#0C1420'); glowDot(W * 0.5, H * 0.2, W * 0.8, 'rgba(120,170,255,0.14)'); return; }
+  if (backdropId === 'sakura') { two('#FCE7EF', '#F7D3E3'); glowDot(W * 0.2, H * 0.15, W * 0.7, 'rgba(255,255,255,0.65)'); return; }
+  if (backdropId === 'grid') {
+    two('#14141A', '#0A0A0E');
+    ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+    ctx.lineWidth = Math.max(1, W / 900);
+    const step = W / 14;
+    for (let x = 0; x <= W; x += step) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke(); }
+    for (let y = 0; y <= H; y += step) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
+    return;
+  }
+  if (backdropId === 'rice') {
+    ctx.fillStyle = '#EFE7D6'; ctx.fillRect(0, 0, W, H);
+    for (let i = 0; i < Math.round(W * H / 2600); i++) {
+      ctx.fillStyle = `rgba(120,100,70,${Math.random() * 0.07})`;
+      ctx.fillRect(Math.random() * W, Math.random() * H, 1.6, 1.6);
+    }
+    const v = ctx.createRadialGradient(W / 2, H / 2, W * 0.2, W / 2, H / 2, W * 0.8);
+    v.addColorStop(0, 'rgba(0,0,0,0)'); v.addColorStop(1, 'rgba(120,95,55,0.18)');
+    ctx.fillStyle = v; ctx.fillRect(0, 0, W, H);
+    return;
+  }
+  two('#16162A', '#2A1030');
+  glowDot(W * 0.7, H * 0.25, W * 0.6, 'rgba(80,160,255,0.18)');
 }
 
 // ---------- 合成 ----------

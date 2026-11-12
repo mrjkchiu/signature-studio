@@ -1,6 +1,6 @@
 import * as R from './renderer.js';
 import * as PORT from './port/engine.js';
-import { DECOS, DECO_POSITIONS, DECO_SIZES, SEALS, decorTail } from './decor.js';
+import { DECOS, DECO_SIZES, SEALS, decorTail, decoAnchor } from './decor.js';
 
 // ---------------- 状态 ----------------
 const state = {
@@ -12,7 +12,9 @@ const state = {
   duration: 0, theme: 'dark',
   deco: 'none', decoSize: 'm', decoPos: 'tr',
   seal: 'none', sealText: '签名', date: false, underline: false,
-  comet: true, outro: false,
+  comet: false, outro: false,
+  custom: null,
+  decoXY: { x: 0.80, y: 0.24 },
   // 移植版引擎
   port: {
     text: 'Chen Ming', aspect: '16:9',
@@ -46,6 +48,18 @@ const paletteOf = (id) => R.PALETTES.find((p) => p.id === id) || R.PALETTES[0];
 const fontStackOf = (f) => `"${f.css}"`;
 const getCharData = (ch) => SkeletonData.get(ch) || null;
 
+function hsl(h, s, l) { return `hsl(${h} ${Math.max(0, Math.min(100, s))}% ${Math.max(0, Math.min(100, l))}%)`; }
+function activePalette() {
+  const c = state.custom;
+  if (!c) return paletteOf(state.paletteId);
+  return {
+    id: 'custom', label: '自定义',
+    stops: [hsl(c.h, c.s, c.l), hsl((c.h + 26) % 360, Math.max(25, c.s - 12), Math.max(8, c.l - 26))],
+    glow: hsl(c.h, Math.max(40, c.s), Math.max(18, c.l - 6)),
+    glowR: 14,
+  };
+}
+
 function toast(msg) {
   const el = $('toast');
   el.textContent = msg; el.dataset.show = '1';
@@ -75,6 +89,46 @@ async function ensureChar(ch) {
     if (!res.ok) throw new Error(res.status);
     SkeletonData.set(ch, await res.json());
   } catch (e) { SkeletonData.set(ch, null); }
+}
+
+// ---------------- 调色滑块 ----------------
+function syncColorSliders() {
+  const c = state.custom || { h: 210, s: 70, l: 70 };
+  for (const [id, key] of [['hue', 'h'], ['sat', 's'], ['lum', 'l']]) {
+    const el = $(id), out = $(id + 'Val');
+    if (!el) continue;
+    el.value = c[key];
+    if (out) out.textContent = c[key];
+  }
+  paintColorPreview();
+}
+function paintColorPreview() {
+  const el = $('colorPreview');
+  if (!el) return;
+  const p = activePalette();
+  el.innerHTML = '';
+  const sw = `background:linear-gradient(135deg,${p.stops.join(',')});`;
+  el.appendChild(chip(`<i class="sw" style="${sw}"></i>当前色`, true, () => {}));
+  el.appendChild(chip('恢复预设', false, () => {
+    state.custom = null; syncColorSliders(); buildCnChips(); restyle();
+  }));
+}
+
+// ---------------- 确认弹窗 ----------------
+function confirmDialog(msg, okText = '确认') {
+  return new Promise((resolve) => {
+    const m = $('modal');
+    $('modalMsg').textContent = msg;
+    $('modalOk').textContent = okText;
+    m.hidden = false;
+    const done = (v) => {
+      m.hidden = true;
+      $('modalOk').onclick = null; $('modalCancel').onclick = null;
+      resolve(v);
+    };
+    $('modalOk').onclick = () => done(true);
+    $('modalCancel').onclick = () => done(false);
+  });
 }
 
 // ---------------- 尺寸 ----------------
@@ -112,11 +166,12 @@ function decorCfg() {
   return {
     couple: isCouple, deco: state.deco, decoSize: state.decoSize, decoPos: state.decoPos,
     seal: state.seal, sealText: state.sealText, date: state.date, underline: state.underline,
+    decoXY: state.decoXY,
   };
 }
 function restyle() {
   if (!env || !scene) { rebuildCn(); return; }
-  const palette = paletteOf(state.paletteId);
+  const palette = activePalette();
   env.palette = palette;
   env.backdropId = state.backdropId;
   env.decor = decorCfg();
@@ -135,7 +190,7 @@ async function rebuildCn() {
   if (!W) return;
   const token = ++buildToken;
   const font = fontOf(state.fontId);
-  const palette = paletteOf(state.paletteId);
+  const palette = activePalette();
   const fontStack = fontStackOf(font);
   const isCouple = state.couple && !!state.text2;
   const text = isCouple ? state.text + state.text2 : state.text;
@@ -205,6 +260,42 @@ function rebuildPort() {
   portScene = PORT.buildPortScene(portCfg(), W, H);
   t0 = performance.now();
   updateHud();
+}
+
+// ---------------- 装饰拖动 ----------------
+let dragDeco = false;
+function canvasPoint(e) {
+  const rect = cv.getBoundingClientRect();
+  return {
+    x: ((e.clientX - rect.left) / Math.max(rect.width, 1)) * W,
+    y: ((e.clientY - rect.top) / Math.max(rect.height, 1)) * H,
+  };
+}
+function setupDecoDrag() {
+  cv.addEventListener('pointerdown', (e) => {
+    if (state.tab !== 'cn' || !env || !scene || state.deco === 'none') return;
+    const p = canvasPoint(e);
+    const a = decoAnchor(scene, env.decor);
+    if (Math.hypot(p.x - a.x, p.y - a.y) < a.base * 0.9) {
+      dragDeco = true;
+      try { cv.setPointerCapture(e.pointerId); } catch (err) {}
+      e.preventDefault();
+    }
+  });
+  cv.addEventListener('pointermove', (e) => {
+    if (!dragDeco || !env || !scene) return;
+    const p = canvasPoint(e);
+    state.decoXY = {
+      x: Math.min(0.96, Math.max(0.04, p.x / W)),
+      y: Math.min(0.96, Math.max(0.04, p.y / H)),
+    };
+    env.decor = { ...env.decor, decoXY: state.decoXY };
+    e.preventDefault();
+  });
+  const end = () => { dragDeco = false; };
+  cv.addEventListener('pointerup', end);
+  cv.addEventListener('pointercancel', end);
+  cv.addEventListener('pointerleave', end);
 }
 
 // ---------------- 主循环 ----------------
@@ -282,8 +373,8 @@ function buildCnChips() {
   const pc = $('palChips'); pc.innerHTML = '';
   for (const p of R.PALETTES) {
     const sw = `background:linear-gradient(135deg,${p.stops.join(',')});`;
-    pc.appendChild(chip(`<i class="sw" style="${sw}"></i>${p.label}`, state.paletteId === p.id, () => {
-      state.paletteId = p.id; buildCnChips(); restyle();
+    pc.appendChild(chip(`<i class="sw" style="${sw}"></i>${p.label}`, !state.custom && state.paletteId === p.id, () => {
+      state.paletteId = p.id; state.custom = null; syncColorSliders(); buildCnChips(); restyle();
     }));
   }
 
@@ -302,18 +393,15 @@ function buildCnChips() {
     }));
   }
 
-  const fx2 = $('fx2Chips'); fx2.innerHTML = '';
-  fx2.appendChild(chip('光点入场', state.comet, () => { state.comet = !state.comet; buildCnChips(); rebuildCn(); }));
-  fx2.appendChild(chip('彩色收尾', state.outro, () => { state.outro = !state.outro; buildCnChips(); rebuildCn(); }));
-
   const dc = $('decoChips'); dc.innerHTML = '';
   for (const d of DECOS) dc.appendChild(chip(d.label, state.deco === d.id, () => {
     state.deco = d.id; buildCnChips(); rebuildCn();
   }));
 
-  const dopt = $('decoOptChips'); dopt.innerHTML = '';
-  for (const o of DECO_SIZES) dopt.appendChild(chip('大小' + o.label, state.decoSize === o.id, () => { state.decoSize = o.id; buildCnChips(); rebuildCn(); }));
-  for (const o of DECO_POSITIONS) dopt.appendChild(chip('位置' + o.label, state.decoPos === o.id, () => { state.decoPos = o.id; buildCnChips(); rebuildCn(); }));
+  const dos = $('decoSizeChips'); dos.innerHTML = '';
+  for (const o of DECO_SIZES) dos.appendChild(chip(o.label, state.decoSize === o.id, () => {
+    state.decoSize = o.id; buildCnChips(); rebuildCn();
+  }));
 
   const sc = $('stampChips'); sc.innerHTML = '';
   for (const o of SEALS) sc.appendChild(chip(o.label, state.seal === o.id, () => { state.seal = o.id; buildCnChips(); rebuildCn(); }));
@@ -339,9 +427,11 @@ function buildPortChips() {
     { v: '16:9', label: '横 16:9' }, { v: '9:16', label: '竖 9:16' }, { v: '1:1', label: '方 1:1' },
   ], p.aspect, (v) => { p.aspect = v; applyStageSize(); resize(); });
   rep('portSize', [
-    { v: 180, label: '字号 小' }, { v: 240, label: '字号 中' }, { v: 300, label: '字号 大' },
-    { v: 0.7, label: '笔宽 细' }, { v: 1, label: '笔宽 中' }, { v: 1.4, label: '笔宽 粗' },
-  ], p.fontSize, (v) => { if (v < 10) p.fontSize = v; else p.penWidth = v; });
+    { v: 180, label: '小' }, { v: 240, label: '中' }, { v: 300, label: '大' },
+  ], p.fontSize, (v) => { p.fontSize = v; });
+  rep('portPen', [
+    { v: 0.7, label: '细' }, { v: 1, label: '中' }, { v: 1.4, label: '粗' },
+  ], p.penWidth, (v) => { p.penWidth = v; });
   rep('portPressure', [
     { v: 0.4, label: '压力 低' }, { v: 0.7, label: '压力 中' }, { v: 1, label: '压力 高' },
     { v: 1.0, label: '首字母 1.0' }, { v: 1.3, label: '首字母 1.3' }, { v: 1.5, label: '首字母 1.5' },
@@ -424,7 +514,7 @@ function exportCn(transparent) {
     const mk = () => makeCanvas(size, size);
     const c = mk(), g = mk(), m = mk(), tmp = mk();
     const font = fontOf(state.fontId);
-    const palette = paletteOf(state.paletteId);
+    const palette = activePalette();
     const s = R.buildScene({
       ctx: g.getContext('2d'), text: exportText, fontStack: `"${font.css}"`, W: size, H: size, font,
       getCharData, makeCanvas, duration: state.duration || 0,
@@ -488,10 +578,33 @@ async function main() {
   $('tabPort').addEventListener('click', () => setTab('port'));
   $('playBtn').addEventListener('click', () => { t0 = performance.now(); painter && painter.reset(); particles = R.createParticleSystem(); if (env) env.particles = particles; });
   $('portPlay').addEventListener('click', () => { t0 = performance.now(); });
-  $('pngBtn').addEventListener('click', () => exportCn(false));
-  $('pngTBtn').addEventListener('click', () => exportCn(true));
-  $('portPngBtn').addEventListener('click', () => exportPort(false));
-  $('portPngTBtn').addEventListener('click', () => exportPort(true));
+  $('pngBtn').addEventListener('click', async () => {
+    if (await confirmDialog('保存这张签名（当前背景）到相册？')) exportCn(false);
+  });
+  $('pngTBtn').addEventListener('click', async () => {
+    if (await confirmDialog('保存透明底 PNG（适合当水印）到相册？')) exportCn(true);
+  });
+  $('portPngBtn').addEventListener('click', async () => {
+    if (await confirmDialog('保存移植版签名到相册？')) exportPort(false);
+  });
+  $('portPngTBtn').addEventListener('click', async () => {
+    if (await confirmDialog('保存移植版透明 PNG 到相册？')) exportPort(true);
+  });
+
+  for (const [id, key] of [['hue', 'h'], ['sat', 's'], ['lum', 'l']]) {
+    const el = $(id);
+    if (!el) continue;
+    el.addEventListener('input', () => {
+      state.custom = { ...(state.custom || { h: 210, s: 70, l: 70 }), [key]: Number(el.value) };
+      const out = $(id + 'Val');
+      if (out) out.textContent = el.value;
+      paintColorPreview();
+      buildCnChips();
+      restyle();
+    });
+  }
+  syncColorSliders();
+  setupDecoDrag();
 
   const nameInput = $('name');
   nameInput.value = state.text;

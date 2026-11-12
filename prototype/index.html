@@ -69,6 +69,20 @@
     border: 1px solid var(--stroke); padding: 10px 16px; border-radius: 999px; font-size: 13px;
     z-index: 40; pointer-events: none; max-width: 86vw; text-align: center; }
   .toast[data-show="1"] { opacity: 1; transform: translateX(-50%) translateY(0); }
+  .slider-row { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--dim); }
+  .slider-row span { width: 32px; flex: none; }
+  .slider-row input[type="range"] { flex: 1; accent-color: var(--accent); }
+  .slider-row i { width: 30px; text-align: right; font-style: normal; }
+  .modal { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center;
+    background: rgba(0,0,0,.55); backdrop-filter: blur(2px); }
+  .modal[hidden] { display: none; }
+  .sheet { width: min(84vw, 340px); background: var(--panel); border: 1px solid var(--stroke);
+    border-radius: 16px; padding: 18px; display: flex; flex-direction: column; gap: 14px; }
+  .sheet .msg { font-size: 15px; line-height: 1.6; color: var(--text); }
+  .sheet .btns { display: flex; gap: 10px; }
+  .sheet .btns button { flex: 1; height: 42px; border-radius: 11px; border: 1px solid var(--stroke);
+    background: var(--chip); color: var(--text); font-size: 14px; }
+  .sheet .btns .primary { background: var(--accent); border-color: var(--accent); color: #fff; }
   .loading { position: fixed; inset: 0; display: grid; place-items: center; background: var(--bg);
     color: var(--dim); font-size: 14px; z-index: 30; }
   .loading[hidden] { display: none; }
@@ -77,6 +91,15 @@
 <body>
 <div class="loading" id="loading">正在加载…</div>
 <div class="toast" id="toast"></div>
+<div class="modal" id="modal" hidden>
+  <div class="sheet">
+    <div class="msg" id="modalMsg"></div>
+    <div class="btns">
+      <button id="modalCancel">取消</button>
+      <button id="modalOk" class="primary">确认</button>
+    </div>
+  </div>
+</div>
 <div class="app">
   <header>
     <div class="tabs">
@@ -108,11 +131,19 @@
       </div>
       <div class="group"><label>字体</label><div class="chips" id="fontChips"></div></div>
       <div class="group"><label>配色</label><div class="chips" id="palChips"></div></div>
+      <div class="group"><label>自定义颜色（滑块调色）</label>
+        <div class="slider-row"><span>色相</span><input id="hue" type="range" min="0" max="360" step="1" value="210" /><i id="hueVal">210</i></div>
+        <div class="slider-row"><span>饱和</span><input id="sat" type="range" min="0" max="100" step="1" value="70" /><i id="satVal">70</i></div>
+        <div class="slider-row"><span>明度</span><input id="lum" type="range" min="5" max="95" step="1" value="70" /><i id="lumVal">70</i></div>
+        <div class="chips" id="colorPreview"></div>
+      </div>
+
       <div class="group"><label>背景</label><div class="chips" id="bgChips"></div></div>
       <div class="group"><label>动效（可叠加）</label><div class="chips" id="fxChips"></div></div>
-      <div class="group"><label>首尾动效</label><div class="chips" id="fx2Chips"></div></div>
       <div class="group"><label>装饰</label><div class="chips" id="decoChips"></div></div>
-      <div class="group"><label>装饰样式</label><div class="chips" id="decoOptChips"></div></div>
+      <div class="group"><label>装饰大小</label><div class="chips" id="decoSizeChips"></div>
+        <span class="hint">开启装饰后，可直接在画布上拖动它调整位置</span>
+      </div>
       <div class="group"><label>落款</label><div class="chips" id="stampChips"></div>
         <input id="sealText" type="text" maxlength="2" placeholder="章内文字" hidden style="height:40px;border-radius:11px;border:1px solid var(--stroke);background:var(--panel);color:var(--text);padding:0 12px;font-size:14px;" />
       </div>
@@ -132,7 +163,8 @@
         <button class="primary" id="portPlay">重播</button>
       </div>
       <div class="group"><label>画幅</label><div class="chips" id="portAspect"></div></div>
-      <div class="group"><label>字号 / 笔宽</label><div class="chips" id="portSize"></div></div>
+      <div class="group"><label>字号</label><div class="chips" id="portSize"></div></div>
+      <div class="group"><label>笔宽</label><div class="chips" id="portPen"></div></div>
       <div class="group"><label>笔压 / 首字母</label><div class="chips" id="portPressure"></div></div>
       <div class="group"><label>收笔花体</label><div class="chips" id="portTerminal"></div></div>
       <div class="group"><label>墨色</label><div class="chips" id="portInk"></div></div>

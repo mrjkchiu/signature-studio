@@ -9,7 +9,16 @@ export const DECOS = [
   { id: 'cat', label: '🐱 猫猫' },
   { id: 'heart', label: '❤ 爱心' },
   { id: 'star', label: '★ 星星' },
+  { id: 'cloud', label: '☁ 云朵' },
+  { id: 'moon', label: '☾ 月牙' },
+  { id: 'snow', label: '❄ 雪花' },
+  { id: 'note', label: '♪ 音符' },
+  { id: 'flower', label: '🌸 樱花' },
+  { id: 'paw', label: '🐾 爪印' },
+  { id: 'sparkle', label: '✦ 闪光' },
+  { id: 'crown', label: '♛ 皇冠' },
 ];
+export const DECO_DEFAULT_XY = { x: 0.80, y: 0.24 };
 
 export const DECO_POSITIONS = [
   { id: 'tr', label: '右上' },
@@ -130,21 +139,76 @@ const SHAPES = {
       w: 4.6,
     },
   ],
+
+  cloud: [
+    { pts: cubic([-52, 12], [-58, -10], [-34, -26], [-14, -18]).concat(cubic([-14, -18], [-8, -44], [24, -46], [30, -24]).slice(1)).concat(cubic([30, -24], [52, -30], [64, -8], [54, 8]).slice(1)), w: 4.6 },
+    { pts: cubic([-54, 12], [-30, 18], [-4, 18], [56, 10]), w: 4.2 },
+  ],
+  moon: [
+    { pts: cubic([-18, -46], [22, -34], [30, 6], [4, 40]).concat(cubic([4, 40], [-20, 32], [-34, 4], [-26, -20]).slice(1)), w: 5.0 },
+    { pts: cubic([18, -30], [44, -18], [44, 20], [20, 36]), w: 3.6, profile: 'taper' },
+  ],
+  snow: [
+    { pts: [[0, -48], [0, 48]], w: 4.4 },
+    { pts: [[-42, -24], [42, 24]], w: 4.4 },
+    { pts: [[-42, 24], [42, -24]], w: 4.4 },
+    { pts: [[0, -48], [-12, -36]], w: 3.2, profile: 'taper' },
+    { pts: [[0, -48], [12, -36]], w: 3.2, profile: 'taper' },
+    { pts: [[0, 48], [-12, 36]], w: 3.2, profile: 'taper' },
+    { pts: [[0, 48], [12, 36]], w: 3.2, profile: 'taper' },
+  ],
+  note: [
+    { pts: circle(-16, 30, 15, 28), w: 6.0 },
+    { pts: [[-2, 30], [-2, -34]], w: 4.6 },
+    { pts: cubic([-2, -34], [16, -40], [26, -28], [24, -10]), w: 4.4, profile: 'taper' },
+  ],
+  flower: [
+    { pts: circle(0, 0, 13, 24), w: 5.0 },
+    ...[0, 1, 2, 3, 4].map((i) => {
+      const a = -Math.PI / 2 + (i * Math.PI * 2) / 5;
+      const cx = Math.cos(a) * 30, cy = Math.sin(a) * 30;
+      return { pts: circle(cx, cy, 15, 22), w: 4.2 };
+    }),
+  ],
+  paw: [
+    { pts: circle(0, 14, 20, 26), w: 7.0 },
+    { pts: circle(-26, -14, 9, 18), w: 7.0 },
+    { pts: circle(-9, -28, 9, 18), w: 7.0 },
+    { pts: circle(10, -28, 9, 18), w: 7.0 },
+    { pts: circle(26, -14, 9, 18), w: 7.0 },
+  ],
+  sparkle: [
+    { pts: [[0, -48], [6, -6], [48, 0], [6, 6], [0, 48], [-6, 6], [-48, 0], [-6, -6], [0, -48]], w: 5.2, profile: 'taper' },
+  ],
+  crown: [
+    { pts: [[-40, 26], [-44, -22], [-20, 0], [0, -34], [20, 0], [44, -22], [40, 26], [-40, 26]], w: 5.0 },
+    { pts: [[-42, 34], [42, 34]], w: 4.2 },
+    { pts: circle(-30, -20, 5, 14), w: 10 },
+    { pts: circle(0, -34, 5, 14), w: 10 },
+    { pts: circle(30, -20, 5, 14), w: 10 },
+  ],
 };
 
 /** 装饰逐笔绘制 + 小动作（眨眼/折耳/摇摆） */
+/** 装饰在画布中的锚点（可拖动，坐标按画布比例保存） */
+export function decoAnchor(scene, cfg) {
+  const f = scene.layout.fontSize;
+  const sizeK = (DECO_SIZES.find((s) => s.id === (cfg.decoSize || 'm')) || DECO_SIZES[1]).k;
+  const base = f * 0.26 * sizeK;
+  const xy = cfg.decoXY || DECO_DEFAULT_XY;
+  const margin = base * 0.62;
+  return {
+    x: clamp(xy.x * scene.W, margin, scene.W - margin),
+    y: clamp(xy.y * scene.H, margin, scene.H - margin),
+    base,
+  };
+}
+
 function drawVectorDeco(ctx, scene, cfg, t, start, palette) {
   const def = SHAPES[cfg.deco];
   if (!def) return;
-  const f = scene.layout.fontSize;
   const sizeK = (DECO_SIZES.find((s) => s.id === (cfg.decoSize || 'm')) || DECO_SIZES[1]).k;
-  const base = f * 0.26 * sizeK;      // 局部 ±50 → base
-  const { x0, y0, x1, y1 } = scene.bbox;
-  const pos = cfg.decoPos || 'tr';
-  let cx, cy;
-  if (pos === 'tl') { cx = x0 - base * 0.55; cy = y0 + base * 0.55; }
-  else if (pos === 'bottom') { cx = (x0 + x1) / 2; cy = y1 + base * 0.95; }
-  else { cx = x1 + base * 0.55; cy = y0 + base * 0.50; }
+  const { x: cx, y: cy, base } = decoAnchor(scene, cfg);
 
   const drawStart = start + 180;
   const per = 90;                       // 每一小笔的时长
