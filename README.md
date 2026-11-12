@@ -2,6 +2,15 @@
 
 输入名字 → 逐笔"写"出来的艺术签名 → 导出图片/动图。当前是**可交互 Web 原型 + 可云端构建的 Android 包壳**。
 
+## 下载安装（Android 8+）
+
+**直链下载（公开、免登录、不过期）**
+
+<https://github.com/mrjkchiu/signature-studio/releases/latest/download/signature-studio-v0.1.1.apk>
+
+装法：下载 → 允许「未知来源」→ 安装。debug 签名，包名 `com.dsh.signature`，约 64MB。
+完全离线，App 没有申请 INTERNET 权限。
+
 ## 先看哪里
 
 | 想知道 | 看这个 |
