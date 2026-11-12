@@ -19,6 +19,8 @@ const state = {
   sealText: '签名',
   date: false,
   underline: false,
+  comet: true,
+  outro: false,
 };
 
 const SkeletonData = new Map();   // 字 → 笔顺数据
@@ -58,6 +60,9 @@ function restyle() {
   env.params.neon = state.fx.has('neon');
   env.params.trail = state.fx.has('trail');
   env.params.particle = state.fx.has('particle');
+  env.params.comet = state.comet;
+  env.params.outro = state.outro;
+  env._chips = null;   // 换配色后笔片要重建
   // 字形层的渐变换色要重画一次（很便宜）
   R.renderGlyphLayer(glyphCanvas, scene, palette);
   settled = false;
@@ -176,6 +181,7 @@ async function rebuild() {
     getCharData, makeCanvas,
     duration: state.duration || 0,
     coupleSplit, decorTailAdd,
+    comet: state.comet, outro: state.outro,
   });
   R.renderGlyphLayer(glyphCanvas, scene, palette);
 
@@ -194,6 +200,8 @@ async function rebuild() {
       neon: state.fx.has('neon'),
       trail: state.fx.has('trail'),
       particle: state.fx.has('particle'),
+      comet: state.comet,
+      outro: state.outro,
     },
   };
   t0 = performance.now();
@@ -305,6 +313,13 @@ function buildChips() {
     if (n2) { n2.hidden = !state.couple; if (!n2.value) n2.value = state.text2 || '李四'; }
   }
 
+  const fx2 = $('fx2Chips');
+  if (fx2) {
+    fx2.innerHTML = '';
+    fx2.appendChild(chip('光点入场', state.comet, () => { state.comet = !state.comet; buildChips(); rebuild(); }));
+    fx2.appendChild(chip('彩色收尾', state.outro, () => { state.outro = !state.outro; buildChips(); restyle(); }));
+  }
+
   const dc2 = $('decoChips');
   if (dc2) {
     dc2.innerHTML = '';
@@ -369,6 +384,7 @@ function makeExportEnv(background) {
     getCharData, makeCanvas, duration: state.duration || 0,
     coupleSplit: isCouple ? [...state.text].length : 0,
     decorTailAdd: decorOn ? decorTail() : 0,
+    comet: state.comet, outro: state.outro,
   });
   R.renderGlyphLayer(g, s, palette);
   const p = R.createMaskPainter(m.getContext('2d'), s, size, size, { makeCanvas });
@@ -377,7 +393,7 @@ function makeExportEnv(background) {
     ctx: c.getContext('2d'), scene: s, glyphCanvas: g, maskCanvas: m, tempCanvas: tmp, makeCanvas,
     painter: p, particles: R.createParticleSystem(), palette, backdropId: background,
     decor: decorCfg(),
-    params: { enter: false, shine: state.fx.has('shine'), neon: state.fx.has('neon'), trail: state.fx.has('trail'), particle: false },
+    params: { enter: false, shine: state.fx.has('shine'), neon: state.fx.has('neon'), trail: state.fx.has('trail'), particle: false, comet: state.comet, outro: state.outro },
   };
 }
 

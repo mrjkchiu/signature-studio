@@ -165,7 +165,7 @@ export function mapCharGeometry({ ctx, item, fontSize, charData }) {
 }
 
 /** 组装场景 */
-export function buildScene({ ctx, text, fontStack, W, H, getCharData, font, letterSpacing = 0.02, duration, makeCanvas, skeletonSize = 260, coupleSplit = 0, gapEm = 0.9, decorTailAdd = 0 }) {
+export function buildScene({ ctx, text, fontStack, W, H, getCharData, font, letterSpacing = 0.02, duration, makeCanvas, skeletonSize = 220, coupleSplit = 0, gapEm = 0.9, decorTailAdd = 0, comet = false, outro = false }) {
   const layout = computeLayout({ ctx, text, fontStack, W, H, letterSpacing, extraEm: coupleSplit > 0 ? gapEm : 0 });
   ctx.font = `${layout.fontSize}px ${fontStack}`;
   // 情侣模式：两个名字之间空出一段，中间放爱心
@@ -241,7 +241,8 @@ export function buildScene({ ctx, text, fontStack, W, H, getCharData, font, lett
   const totalLen = strokes.reduce((a, s) => a + s.len, 0) || 1;
   const n = Math.max([...text].filter((c) => c.trim()).length, 1);
   const dur = duration || autoDuration(n);
-  const writeStart = 140;
+  const lead = comet ? 320 : 0;          // 光点入场阶段
+  const writeStart = 140 + lead;
   const writeDur = Math.max(dur - writeStart, 200);
   let cursor = writeStart;
   const nStroke = Math.max(strokes.length, 1);
@@ -274,9 +275,13 @@ export function buildScene({ ctx, text, fontStack, W, H, getCharData, font, lett
     const a = layout.items[coupleSplit - 1], b = layout.items[coupleSplit];
     couple = { x: (a.penX + layout.advance + b.penX) / 2, y: a.baselineY };
   }
+  const firstStrokePoint = strokes.length && strokes[0].median.length >= 2
+    ? { x: strokes[0].median[0], y: strokes[0].median[1] }
+    : { x: (bx0 + bx1) / 2, y: (by0 + by1) / 2 };
   return {
     W, H, text, fontStack, font, layout, items, strokes, missing,
-    duration: Math.max(dur, writeEnd + decorTailAdd), writeStart, writeEnd, writeDur,
+    duration: Math.max(dur + lead, writeEnd + decorTailAdd, writeEnd + (outro ? 1100 : 0)), lead, firstStrokePoint,
+    writeStart, writeEnd, writeDur,
     couple,
     bbox: { x0: bx0, y0: by0, x1: bx1, y1: by1 },
   };
@@ -573,6 +578,82 @@ function blurredDraw(ctx, img, W, H, blurPx, alpha, env) {
   ctx.restore();
 }
 
+/** 彩色笔片：把字形切成小色片（参考项目的“彩色收尾”） */
+function ensureChips(env) {
+  if (env._chips) return env._chips;
+  const { scene, glyphCanvas } = env;
+  const W = scene.W, H = scene.H;
+  const c = env.makeCanvas(W, H);
+  const cc = c.getContext('2d');
+  const data = glyphCanvas.getContext('2d').getImageData(0, 0, W, H).data;
+  const step = Math.max(5, Math.round(scene.layout.fontSize * 0.052));
+  const hues = ['#FF4D8D', '#FFB84D', '#22D3EE', '#7C3AED', '#5BFF9F', '#F472B6'];
+  for (let y = 0; y < H; y += step) {
+    for (let x = 0; x < W; x += step) {
+      const px = Math.min(W - 1, x + (step >> 1));
+      const py = Math.min(H - 1, y + (step >> 1));
+      if (data[(py * W + px) * 4 + 3] < 60) continue;
+      cc.save();
+      cc.translate(px, py);
+      cc.rotate((Math.random() - 0.5) * 0.55);
+      cc.fillStyle = hues[(Math.random() * hues.length) | 0];
+      cc.fillRect(-step * 0.55, -step * 0.34, step * 1.1, step * 0.68);
+      cc.restore();
+    }
+  }
+  cc.globalCompositeOperation = 'destination-in';
+  cc.drawImage(glyphCanvas, 0, 0);
+  env._chips = c;
+  return c;
+}
+
+/** 光点入场：一道带尾迹的光点飞入，落在第一笔起点 */
+function drawComet(ctx, scene, palette, t) {
+  if (!scene.lead || t > scene.lead + 80) return;
+  const W = scene.W, H = scene.H;
+  const from = { x: -W * 0.12, y: H * 0.16 };
+  const to = scene.firstStrokePoint || { x: W * 0.3, y: H * 0.55 };
+  const cx = (from.x + to.x) / 2 + W * 0.06;
+  const cy = Math.min(from.y, to.y) - H * 0.10;
+  const pt = (u) => ({
+    x: (1 - u) * (1 - u) * from.x + 2 * (1 - u) * u * cx + u * u * to.x,
+    y: (1 - u) * (1 - u) * from.y + 2 * (1 - u) * u * cy + u * u * to.y,
+  });
+  const head = clamp(t / scene.lead, 0, 1);
+  const e = easeInOutCubic(head);
+  const color = palette.glow || '#F0CD8C';
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  // 尾迹
+  for (let i = 13; i >= 0; i--) {
+    const u = e - i * 0.032;
+    if (u < 0) continue;
+    const q = pt(u);
+    const a = (1 - i / 14) * 0.55;
+    const r = Math.max(1.2, (1 - i / 14) * scene.layout.fontSize * 0.035);
+    ctx.globalAlpha = a;
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(q.x, q.y, r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  // 头部光点
+  const hp = pt(e);
+  const hr = scene.layout.fontSize * 0.05 * (1 + 0.15 * Math.sin(t / 90));
+  ctx.globalAlpha = 0.95;
+  ctx.shadowColor = color;
+  ctx.shadowBlur = scene.layout.fontSize * 0.25;
+  ctx.beginPath();
+  ctx.arc(hp.x, hp.y, hr, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = '#FFFFFF';
+  ctx.beginPath();
+  ctx.arc(hp.x, hp.y, hr * 0.45, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
 export function renderFrame(env, t) {
   const { ctx, scene, glyphCanvas, maskCanvas, tempCanvas, painter, params, palette, backdropId } = env;
   const { W, H } = scene;
@@ -590,7 +671,8 @@ export function renderFrame(env, t) {
       blurredDraw(ctx, glyphCanvas, W, H, radius, params.neon ? 0.9 : 0.28, env);
       ctx.globalCompositeOperation = 'source-over';
     }
-    ctx.drawImage(glyphCanvas, 0, 0);
+    const outroP = env.params.outro ? clamp((t - (scene.writeEnd + 160)) / 700, 0, 1) : 0;
+    ctx.drawImage(outroP >= 1 ? ensureChips(env) : glyphCanvas, 0, 0);
     ctx.restore();
     if (env.decor) drawDecorations({ ctx, scene, cfg: env.decor, t, palette, start: scene.writeEnd + 100 });
     return { tips: [] };
@@ -631,6 +713,16 @@ export function renderFrame(env, t) {
     tctx.restore();
   }
 
+  if (params.outro) {
+    const p = clamp((t - (scene.writeEnd + 160)) / 700, 0, 1);
+    if (p > 0) {
+      tctx.save();
+      tctx.globalAlpha = p;
+      tctx.drawImage(ensureChips(env), 0, 0);
+      tctx.restore();
+    }
+  }
+
   if (params.shine && t > scene.writeStart) {
     const period = 2200;
     const ph = ((t - scene.writeStart) % period) / period;
@@ -665,6 +757,9 @@ export function renderFrame(env, t) {
   }
 
   drawBackdrop(ctx, scene, backdropId);
+
+  // 光点入场画在背景之上、字形之下
+  if (env.params.comet) drawComet(ctx, scene, palette, t);
 
   const entrance = params.enter ? easeOutCubic(clamp(t / 520, 0, 1)) : 1;
   const pulse = params.neon ? 0.62 + 0.38 * (0.5 + 0.5 * Math.sin(t / 260)) : 1;

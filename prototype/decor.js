@@ -1,17 +1,14 @@
-// decor.js — 签名"周边"功能：装饰图案、落款印章、落款日期、下划线、情侣爱心
-// 全部画在字形之上，时间轴排在书写完成之后。
-// 思路参考 tangyx527/tyx-signature 的"装饰 + 首尾动画"，中文场景下做了简化。
-
-import { clamp, easeOutCubic, easeOutBack } from './renderer.js';
+// decor.js — 签名"周边"动效
+// 装饰图案改为「用笔锋一笔一笔画出来」（参考 tangyx527/tyx-signature 的实现思路），
+// 而不是贴 emoji；另外提供落款印章、落款日期、下划线、光点入场、彩色笔片收尾。
+import { clamp, easeOutCubic, easeOutBack, easeInOutCubic } from './math.js';
 
 export const DECOS = [
   { id: 'none', label: '无' },
-  { id: 'sparkle', label: '✨ 点缀', emoji: '✨', motion: 'twinkle', count: 3 },
-  { id: 'heart', label: '💖 爱心', emoji: '💖', motion: 'float', count: 1 },
-  { id: 'paw', label: '🐾 爪爪', emoji: '🐾', motion: 'sway', count: 2 },
-  { id: 'flower', label: '🌸 花朵', emoji: '🌸', motion: 'float', count: 2 },
-  { id: 'star', label: '⭐ 星星', emoji: '⭐', motion: 'twinkle', count: 2 },
-  { id: 'cat', label: '🐱 猫猫', emoji: '🐱', motion: 'sway', count: 1 },
+  { id: 'sun', label: '☀ 太阳' },
+  { id: 'cat', label: '🐱 猫猫' },
+  { id: 'heart', label: '❤ 爱心' },
+  { id: 'star', label: '★ 星星' },
 ];
 
 export const DECO_POSITIONS = [
@@ -21,9 +18,9 @@ export const DECO_POSITIONS = [
 ];
 
 export const DECO_SIZES = [
-  { id: 's', label: '小', k: 0.14 },
-  { id: 'm', label: '中', k: 0.20 },
-  { id: 'l', label: '大', k: 0.27 },
+  { id: 's', label: '小', k: 0.60 },
+  { id: 'm', label: '中', k: 0.86 },
+  { id: 'l', label: '大', k: 1.15 },
 ];
 
 export const SEALS = [
@@ -32,62 +29,181 @@ export const SEALS = [
   { id: 'round', label: '圆章' },
 ];
 
-/** 装饰总时长：书写结束后再留约 1.25s 给装饰和落款 */
-export function decorTail() { return 1250; }
+export function decorTail() { return 1500; }
 
-const EMOJI_FONT = '"Apple Color Emoji","Noto Color Emoji","Segoe UI Emoji",sans-serif';
+// ---------- 几何工具 ----------
+function cubic(p0, p1, p2, p3, n = 40) {
+  const out = [];
+  for (let i = 0; i <= n; i++) {
+    const t = i / n, u = 1 - t;
+    out.push([
+      u*u*u*p0[0] + 3*u*u*t*p1[0] + 3*u*t*t*p2[0] + t*t*t*p3[0],
+      u*u*u*p0[1] + 3*u*u*t*p1[1] + 3*u*t*t*p2[1] + t*t*t*p3[1],
+    ]);
+  }
+  return out;
+}
+function circle(cx, cy, r, n = 56, from = 0, to = Math.PI * 2) {
+  const out = [];
+  for (let i = 0; i <= n; i++) {
+    const a = from + (to - from) * (i / n);
+    out.push([cx + Math.cos(a) * r, cy + Math.sin(a) * r]);
+  }
+  return out;
+}
 
-function drawEmojiDecor(ctx, scene, cfg, t, start) {
-  const def = DECOS.find((d) => d.id === cfg.deco);
-  if (!def || def.id === 'none') return;
+/**
+ * 用"变宽缎带"画一条笔触（局部坐标）
+ * profile: 'brush' 两端收锋 / 'taper' 只收尾
+ */
+function strokeRibbon(ctx, pts, width, profile = 'brush') {
+  if (pts.length < 2) return;
+  const n = pts.length;
+  const L = [], R = [];
+  for (let i = 0; i < n; i++) {
+    const i0 = Math.max(0, i - 1), i1 = Math.min(n - 1, i + 1);
+    const dx = pts[i1][0] - pts[i0][0], dy = pts[i1][1] - pts[i0][1];
+    const len = Math.hypot(dx, dy) || 1;
+    const nx = -dy / len, ny = dx / len;
+    const u = i / (n - 1);
+    const k = profile === 'taper'
+      ? Math.max(0.03, Math.pow(1 - u, 0.7))
+      : 0.30 + 0.70 * Math.pow(Math.sin(Math.PI * u), 0.7);
+    const r = (width / 2) * k;
+    L.push([pts[i][0] + nx * r, pts[i][1] + ny * r]);
+    R.push([pts[i][0] - nx * r, pts[i][1] - ny * r]);
+  }
+  ctx.beginPath();
+  ctx.moveTo(L[0][0], L[0][1]);
+  for (let i = 1; i < n; i++) ctx.lineTo(L[i][0], L[i][1]);
+  for (let i = n - 1; i >= 0; i--) ctx.lineTo(R[i][0], R[i][1]);
+  ctx.closePath();
+  ctx.fill();
+}
+
+// ---------- 装饰图形（局部坐标 ±50） ----------
+const SHAPES = {
+  sun: [
+    { pts: circle(0, 0, 48, 56), w: 4.0 },
+    { pts: cubic([-28, 1], [-25, -11], [-16, -12], [-12, -1]), w: 3.4 },
+    { pts: cubic([13, -2], [16, -14], [25, -15], [29, -4]), w: 3.4 },
+    { pts: cubic([-10, 17], [-3, 29], [13, 29], [18, 15]), w: 3.6 },
+    ...Array.from({ length: 8 }, (_, i) => {
+      const a = -Math.PI / 2 + i * Math.PI / 4;
+      return {
+        pts: [[Math.cos(a) * 64, Math.sin(a) * 64], [Math.cos(a) * 86, Math.sin(a) * 86]],
+        w: 5.2,
+      };
+    }),
+  ],
+  cat: [
+    { pts: cubic([-42, -4], [-40, -19], [-40, -42], [-34, -43]).concat(cubic([-34, -43], [-29, -44], [-11, -23], [-5, -13]).slice(1)), w: 4.6 },
+    { pts: cubic([7, -11], [16, -28], [26, -45], [30, -43]).concat(cubic([30, -43], [37, -42], [41, -20], [40, -8]).slice(1)), w: 4.5 },
+    { pts: circle(-10, 5, 4.6, 20), w: 9.2, dot: true },
+    { pts: circle(15, 4, 4.6, 20), w: 9.2, dot: true, eye: true },
+    { pts: cubic([-65, 4], [-53, 6], [-29, 12], [-17, 15]), w: 5.2, profile: 'taper' },
+    { pts: cubic([-55, 37], [-43, 31], [-27, 24], [-18, 20]), w: 4.8, profile: 'taper' },
+    { pts: cubic([64, -5], [54, 0], [36, 8], [22, 14]), w: 5.6, profile: 'taper' },
+    { pts: cubic([60, 23], [49, 22], [34, 19], [25, 19]), w: 4.6, profile: 'taper' },
+  ],
+  heart: [
+    {
+      pts: cubic([0, 49], [-18, 31], [-60, 6], [-52, -24])
+        .concat(cubic([-52, -24], [-44, -54], [-12, -55], [0, -28]).slice(1))
+        .concat(cubic([0, -28], [15, -58], [47, -50], [53, -24]).slice(1))
+        .concat(cubic([53, -24], [62, 6], [18, 33], [0, 49]).slice(1)),
+      w: 4.8,
+    },
+  ],
+  star: [
+    {
+      pts: (() => {
+        const pts = [];
+        const R1 = 88, R2 = 36;
+        for (let i = 0; i <= 10; i++) {
+          const a = -Math.PI / 2 + (i * Math.PI) / 5;
+          const r = i % 2 === 0 ? R1 : R2;
+          pts.push([Math.cos(a) * r, Math.sin(a) * r]);
+        }
+        return pts;
+      })(),
+      w: 4.6,
+    },
+  ],
+};
+
+/** 装饰逐笔绘制 + 小动作（眨眼/折耳/摇摆） */
+function drawVectorDeco(ctx, scene, cfg, t, start, palette) {
+  const def = SHAPES[cfg.deco];
+  if (!def) return;
   const f = scene.layout.fontSize;
   const sizeK = (DECO_SIZES.find((s) => s.id === (cfg.decoSize || 'm')) || DECO_SIZES[1]).k;
-  const base = f * sizeK;
+  const base = f * 0.26 * sizeK;      // 局部 ±50 → base
   const { x0, y0, x1, y1 } = scene.bbox;
   const pos = cfg.decoPos || 'tr';
   let cx, cy;
-  if (pos === 'tl') { cx = x0 - base * 0.25; cy = y0 + base * 0.15; }
+  if (pos === 'tl') { cx = x0 - base * 0.55; cy = y0 + base * 0.55; }
   else if (pos === 'bottom') { cx = (x0 + x1) / 2; cy = y1 + base * 0.95; }
-  else { cx = x1 + base * 0.30; cy = y0 + base * 0.20; }
+  else { cx = x1 + base * 0.55; cy = y0 + base * 0.50; }
 
-  const count = Math.max(1, def.count || 1);
-  for (let i = 0; i < count; i++) {
-    const popStart = start + 260 + i * 140;
-    const p = clamp((t - popStart) / 340, 0, 1);
-    if (p <= 0) continue;
-    const pop = easeOutBack(p);
-    // 各自的小动作
-    let dx = 0, dy = 0, rot = 0, sc = pop;
-    const ph = t / 620 + i * 1.7;
-    if (def.motion === 'twinkle') { sc *= 0.85 + 0.15 * Math.sin(ph * 1.6); dy = Math.sin(ph) * base * 0.05; }
-    else if (def.motion === 'float') { dy = Math.sin(ph) * base * 0.12; rot = Math.sin(ph * 0.7) * 0.08; }
-    else { rot = Math.sin(ph * 1.1) * 0.18; dx = Math.cos(ph * 0.8) * base * 0.06; }
-    const ox = i === 0 ? 0 : (i % 2 ? 1 : -1) * base * 0.85;
-    const oy = i === 0 ? 0 : (i === 1 ? -0.7 : 0.75) * base;
-    ctx.save();
-    ctx.globalAlpha = clamp(p * 1.4, 0, 1);
-    ctx.translate(cx + ox + dx, cy + oy + dy);
-    ctx.rotate(rot);
-    const sz = base * (0.75 + 0.35 * sc);
-    ctx.font = `${sz}px ${EMOJI_FONT}`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(def.emoji, 0, 0);
-    ctx.restore();
-  }
+  const drawStart = start + 180;
+  const per = 90;                       // 每一小笔的时长
+  const total = def.length * per;
+  const appear = clamp((t - drawStart) / total, 0, 1);
+  const idle = Math.max(0, t - (drawStart + total));
+  const sway = Math.sin(idle / 700) * 0.05;
+  const scale = base / 50;
+
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(-0.06 + sway);
+  ctx.scale(scale, scale);
+  ctx.fillStyle = '#D8A94E';
+  ctx.globalAlpha = 0.95;
+  def.forEach((piece, i) => {
+    const p = clamp((t - (drawStart + i * per)) / per, 0, 1);
+    if (p <= 0) return;
+    let pts = piece.pts;
+    // 眨眼：猫/太阳的右眼周期性压扁
+    if (piece.eye) {
+      const blink = ((idle + 400) % 2400) / 2400;
+      const lid = blink < 0.06 ? 1 - Math.abs(blink / 0.06 - 0.5) * 2 : 0;
+      ctx.save();
+      ctx.translate(15, 4);
+      ctx.scale(1, Math.max(0.12, 1 - lid * 0.9));
+      ctx.translate(-15, -4);
+      strokeRibbon(ctx, pts, piece.w, piece.profile || 'brush');
+      ctx.restore();
+      return;
+    }
+    // 折耳：左耳周期性内折（简化为缩放）
+    if (cfg.deco === 'cat' && i === 0) {
+      const fold = Math.max(0, Math.sin(idle / 1800)) * 0.18;
+      ctx.save();
+      ctx.translate(-36, -24);
+      ctx.rotate(-fold);
+      ctx.translate(36, 24);
+    }
+    // 逐笔推进
+    const n = Math.max(2, Math.floor(pts.length * easeInOutCubic(p)));
+    strokeRibbon(ctx, pts.slice(0, n), piece.w, piece.profile || 'brush');
+    if (cfg.deco === 'cat' && i === 0) ctx.restore();
+  });
+  ctx.restore();
 }
 
+// ---------- 下划线 / 印章 / 日期 / 情侣心（保持原有实现） ----------
 function drawUnderline(ctx, scene, cfg, t, start, palette) {
   const p = clamp((t - start) / 460, 0, 1);
   if (p <= 0) return;
   const f = scene.layout.fontSize;
   const { x0, x1, y1 } = scene.bbox;
   const ax = x0 - f * 0.02, bx = x1 + f * 0.01;
-  const y = y1 + f * 0.10;
+  const lift = cfg.underlineLift ? Math.sin(clamp(p, 0, 1) * Math.PI) * f * 0.02 : 0;
+  const y = y1 + f * 0.10 - lift;
   const xEnd = ax + (bx - ax) * easeOutCubic(p);
   ctx.save();
   ctx.lineCap = 'round';
-  // 主笔
   ctx.strokeStyle = palette.glow || palette.stops[0];
   ctx.globalAlpha = 0.9;
   ctx.lineWidth = f * 0.016;
@@ -97,15 +213,6 @@ function drawUnderline(ctx, scene, cfg, t, start, palette) {
   ctx.moveTo(ax, y);
   ctx.quadraticCurveTo((ax + xEnd) / 2, y + f * 0.018, xEnd, y);
   ctx.stroke();
-  // 细高光
-  ctx.globalAlpha = 0.55;
-  ctx.lineWidth = f * 0.005;
-  ctx.shadowBlur = 0;
-  ctx.strokeStyle = 'rgba(255,255,255,0.85)';
-  ctx.beginPath();
-  ctx.moveTo(ax, y - f * 0.004);
-  ctx.quadraticCurveTo((ax + xEnd) / 2, y + f * 0.014, xEnd, y - f * 0.004);
-  ctx.stroke();
   ctx.restore();
 }
 
@@ -114,36 +221,28 @@ function drawSeal(ctx, scene, cfg, t, start) {
   const p = clamp((t - (start + 520)) / 360, 0, 1);
   if (p <= 0) return;
   const f = scene.layout.fontSize;
-  const s = f * 0.36;                    // 章面尺寸
+  const s = f * 0.36;
   const cx = scene.bbox.x1 + s * 0.30;
   const cy = scene.bbox.y1 + s * 0.42;
   const press = 1.45 - 0.45 * easeOutCubic(clamp(p * 1.25, 0, 1));
   const alpha = clamp(p * 1.6, 0, 1);
   const text = (cfg.sealText || '签名').slice(0, 2);
-  const red = '#C62828';
-
   ctx.save();
   ctx.globalAlpha = alpha;
   ctx.translate(cx, cy);
   ctx.rotate(-0.06);
   ctx.scale(press, press);
-  // 章印外框（阴文：红底白字）
-  ctx.fillStyle = red;
+  ctx.fillStyle = '#C62828';
   ctx.shadowColor = 'rgba(198,40,40,0.35)';
   ctx.shadowBlur = s * 0.28;
   if (cfg.seal === 'round') {
-    ctx.beginPath();
-    ctx.arc(0, 0, s * 0.56, 0, Math.PI * 2);
-    ctx.fill();
+    ctx.beginPath(); ctx.arc(0, 0, s * 0.56, 0, Math.PI * 2); ctx.fill();
     ctx.shadowBlur = 0;
     ctx.strokeStyle = 'rgba(255,255,255,0.55)';
     ctx.lineWidth = s * 0.045;
-    ctx.beginPath();
-    ctx.arc(0, 0, s * 0.45, 0, Math.PI * 2);
-    ctx.stroke();
+    ctx.beginPath(); ctx.arc(0, 0, s * 0.45, 0, Math.PI * 2); ctx.stroke();
   } else {
-    const r = s * 0.06;
-    const w = s * 0.92, h = s * 0.92;
+    const w = s * 0.92, h = s * 0.92, r = s * 0.06;
     ctx.beginPath();
     ctx.roundRect ? ctx.roundRect(-w / 2, -h / 2, w, h, r) : ctx.rect(-w / 2, -h / 2, w, h);
     ctx.fill();
@@ -155,18 +254,13 @@ function drawSeal(ctx, scene, cfg, t, start) {
       : ctx.rect(-w / 2 + s * 0.07, -h / 2 + s * 0.07, w - s * 0.14, h - s * 0.14);
     ctx.stroke();
   }
-  // 章内文字（竖排两字）
   ctx.fillStyle = 'rgba(255,255,255,0.95)';
   ctx.font = `${s * 0.34}px ${scene.fontStack}`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   const chars = [...text];
-  if (chars.length === 1) {
-    ctx.fillText(chars[0], 0, 0);
-  } else {
-    ctx.fillText(chars[0], 0, -s * 0.20);
-    ctx.fillText(chars[1], 0, s * 0.20);
-  }
+  if (chars.length === 1) ctx.fillText(chars[0], 0, 0);
+  else { ctx.fillText(chars[0], 0, -s * 0.20); ctx.fillText(chars[1], 0, s * 0.20); }
   ctx.restore();
 }
 
@@ -191,23 +285,25 @@ function drawCoupleHeart(ctx, scene, cfg, t, start) {
   const p = clamp((t - (scene.writeEnd + 220)) / 420, 0, 1);
   if (p <= 0) return;
   const f = scene.layout.fontSize;
-  const beat = 1 + 0.09 * Math.max(0, Math.sin((t - start) / 340));
+  const beat = 1 + 0.10 * Math.max(0, Math.sin((t - start) / 320));
   const sz = f * 0.34 * easeOutBack(p) * beat;
   ctx.save();
   ctx.globalAlpha = clamp(p * 1.5, 0, 1);
-  ctx.font = `${sz}px ${EMOJI_FONT}`;
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText('❤️', scene.couple.x, scene.couple.y - f * 0.30);
+  ctx.translate(scene.couple.x, scene.couple.y - f * 0.30);
+  ctx.scale(sz / 50, sz / 50);
+  ctx.fillStyle = '#FF4D7D';
+  ctx.shadowColor = 'rgba(255,77,125,0.55)';
+  ctx.shadowBlur = 12;
+  const heart = SHAPES.heart[0];
+  strokeRibbon(ctx, heart.pts, heart.w * 3.4, 'brush');
   ctx.restore();
 }
 
-/** 统一入口：所有装饰都画在字形之上 */
 export function drawDecorations({ ctx, scene, cfg, t, palette, start }) {
   if (!cfg) return;
   const s0 = start != null ? start : scene.writeEnd + 100;
   if (cfg.couple) drawCoupleHeart(ctx, scene, cfg, t, s0);
-  if (cfg.deco && cfg.deco !== 'none') drawEmojiDecor(ctx, scene, cfg, t, s0);
+  if (cfg.deco && cfg.deco !== 'none') drawVectorDeco(ctx, scene, cfg, t, s0, palette);
   if (cfg.underline) drawUnderline(ctx, scene, cfg, t, s0, palette);
   if (cfg.seal && cfg.seal !== 'none') drawSeal(ctx, scene, cfg, t, s0);
   if (cfg.date) drawDate(ctx, scene, cfg, t, s0);
