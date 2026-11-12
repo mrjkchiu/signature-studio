@@ -26,10 +26,7 @@ android {
     kotlinOptions {
         jvmTarget = "17"
     }
-    // 资源已被 copy-assets.sh 预压缩，避免 APK 里再压一遍
-    androidResources {
-        noCompress += listOf("ttf", "otf", "json")
-    }
+    // 注意：不要对 ttf/json 设 noCompress——那会让 APK 变大（字体和笔顺 JSON 都能压缩）
 }
 
 dependencies {
