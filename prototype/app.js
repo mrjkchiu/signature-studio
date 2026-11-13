@@ -14,6 +14,8 @@ const state = {
   deco: 'none', decoSize: 'm', decoPos: 'tr',
   seal: 'none', sealText: '签名', date: false, underline: false,
   comet: false, outro: false,
+  dprScale: 1,
+  gifDither: true,
   custom: null,
   decoXY: { x: 0.80, y: 0.24 },
   // 移植版引擎
@@ -164,7 +166,7 @@ function applyStageSize() {
 }
 function resize() {
   const rect = stage.getBoundingClientRect();
-  const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
+  const dpr = Math.min(window.devicePixelRatio || 1, 1.5) * (state.dprScale || 1);
   const w = Math.min(1000, Math.max(240, Math.round(rect.width * dpr)));
   const h = Math.min(1000, Math.max(140, Math.round(rect.height * dpr)));
   if (w === W && h === H) return false;
@@ -191,6 +193,7 @@ function decorCfg() {
   };
 }
 function restyle() {
+  wake();
   if (!env || !scene) { rebuildCn(); return; }
   const palette = activePalette();
   env.palette = palette;
@@ -208,6 +211,7 @@ function restyle() {
 }
 
 async function rebuildCn() {
+  wake();
   if (!W) return;
   const token = ++buildToken;
   const font = fontOf(state.fontId);
@@ -283,6 +287,7 @@ function portCfg() {
   };
 }
 function rebuildPort() {
+  wake();
   if (!W) return;
   portScene = PORT.buildPortScene(portCfg(), W, H);
   t0 = performance.now();
@@ -308,6 +313,7 @@ function setupDecoDrag() {
       y: Math.min(0.96, Math.max(0.04, p.y / H)),
     };
     env.decor = { ...env.decor, decoXY: state.decoXY };
+    wake();
     renderNow();               // 拖动过程中立即重绘
     e.preventDefault();
   };
@@ -324,6 +330,7 @@ function setupDecoDrag() {
     const hit = Math.max(a.base * 1.25, Math.min(W, H) * 0.10);
     if (Math.hypot(p.x - a.x, p.y - a.y) > hit) return;
     dragDeco = true; dragging = true;
+    wake();
     try { cv.setPointerCapture(e.pointerId); } catch (err) {}
     // 监听 window：手机上手指出画布也不会中断拖动
     window.addEventListener('pointermove', onMove, { passive: false });
@@ -334,6 +341,34 @@ function setupDecoDrag() {
 }
 
 // ---------------- 主循环 ----------------
+let sleeping = false;
+let lastActivity = performance.now();
+let qualityEvalAt = 0;
+
+/** 唤醒渲染（任何交互/参数变化都调用） */
+function wake() {
+  lastActivity = performance.now();
+  if (sleeping) {
+    sleeping = false;
+    requestAnimationFrame(loop);
+  }
+}
+
+/** 当前 Tab 的动画是否已经播完 */
+function animDone(now) {
+  if (state.tab === 'port') return !portScene || (now - t0) / 1000 > portScene.total + 0.6;
+  return !env || now - t0 > (scene ? scene.duration + 200 : 0);
+}
+
+/** 降低渲染分辨率但保持动画进度（低端机保流畅） */
+function applyQualityScale() {
+  const keep = performance.now() - t0;
+  resize();
+  if (state.tab === 'port') rebuildPort(); else rebuildCn();
+  t0 = performance.now() - keep;
+  wake();
+}
+
 function loop(now) {
   frameNo++;
   if (state.tab === 'port') {
@@ -352,6 +387,27 @@ function loop(now) {
     fps = Math.round((fpsFrames * 1000) / (now - fpsLast));
     fpsFrames = 0; fpsLast = now;
     $('hud').textContent = `${fps} fps`;
+    // 只在动画进行中采样画质（静止时 fps 无意义）
+    if (!animDone(now) && now > 1500 && now - qualityEvalAt > 5000
+        && fps < 42 && (state.dprScale || 1) > 0.7) {
+      state.dprScale = Math.max(0.7, +((state.dprScale || 1) - 0.25).toFixed(2));
+      qualityEvalAt = now;
+      toast(`检测到掉帧，画质已降到 ${Math.round(state.dprScale * 100)}%`);
+      applyQualityScale();
+      return;
+    }
+  }
+
+  // 完全静止 3 秒后停止渲染（省电）；任何交互都会 wake()
+  const busy = !animDone(now) || dragging
+    || (state.tab === 'cn' && !!env && (
+      env.params.neon || env.params.particle || env.params.shine
+      || (env.decor && (env.decor.deco !== 'none' || env.decor.seal !== 'none'))
+    ));
+  if (busy) lastActivity = now;
+  if (!busy && now - lastActivity > 3000) {
+    sleeping = true;
+    return;
   }
   requestAnimationFrame(loop);
 }
@@ -433,6 +489,7 @@ function buildCnChips() {
     state.deco = d.id; buildCnChips(); updateDecor();
   }));
 
+  buildGifQualityChips($('gifQChipsCn'));
   const dos = $('decoSizeChips'); dos.innerHTML = '';
   for (const o of DECO_SIZES) dos.appendChild(chip(o.label, state.decoSize === o.id, () => {
     state.decoSize = o.id; buildCnChips(); updateDecor();
@@ -538,6 +595,7 @@ function buildPortChips() {
     { v: 3, label: '3s' }, { v: 5, label: '5s' }, { v: 8, label: '8s' }, { v: 12, label: '12s' },
   ], p.duration, (v) => { p.duration = v; });
   // 背景互斥：透明与颜色不能同时选中
+  buildGifQualityChips($('gifQChipsPort'));
   const bgEl = $('portBg');
   if (bgEl) {
     bgEl.innerHTML = '';
@@ -561,6 +619,7 @@ const TAB_SCROLL = { cn: 0, port: 0 };
 const panelScroller = () => document.querySelector('.panel');
 
 function setTab(tab) {
+  wake();
   const scroller = panelScroller();
   if (scroller && state.tab !== tab) TAB_SCROLL[state.tab] = scroller.scrollTop;
 
@@ -581,6 +640,17 @@ function setTab(tab) {
     requestAnimationFrame(() => { scroller.scrollTop = y; });
     setTimeout(() => { if (state.tab === tab) scroller.scrollTop = y; }, 60);
   }
+}
+
+function buildGifQualityChips(el) {
+  if (!el) return;
+  el.innerHTML = '';
+  el.appendChild(chip('标准（省空间）', state.gifDither === false, () => {
+    state.gifDither = false; buildCnChips(); buildPortChips();
+  }));
+  el.appendChild(chip('高清（抖动）', state.gifDither !== false, () => {
+    state.gifDither = true; buildCnChips(); buildPortChips();
+  }));
 }
 
 // ---------------- 导出 ----------------
@@ -716,7 +786,7 @@ async function doExportGif(kind) {
     const res = await exportGif({
       draw: rig.draw, width: kind === 'cn' ? 480 : (state.port.aspect === '9:16' ? 360 : state.port.aspect === '1:1' ? 480 : 640),
       height: kind === 'cn' ? 480 : (state.port.aspect === '9:16' ? 640 : state.port.aspect === '1:1' ? 480 : 360),
-      fps: 15, duration: dur, maxColors: 256,
+      fps: 15, duration: dur, maxColors: 256, dither: state.gifDither !== false,
       onProgress: (p) => progressToast('GIF', p),
     });
     const name = `签名_${(kind === 'cn' ? state.text : state.port.text).replace(/\s+/g, '_') || 'signature'}.gif`;

@@ -18,10 +18,29 @@ function makeCanvas2(w, h) {
  * 导出 GIF
  * @param draw (ctx, tSeconds) => void
  */
-export async function exportGif({ draw, width, height, fps, duration, maxColors = 256, onProgress }) {
+export async function exportGif({ draw, width, height, fps, duration, maxColors = 256, onProgress, dither = true }) {
   const w = width - (width % 2), h = height - (height % 2);
   const canvas = makeCanvas2(w, h);
   const ctx = canvas.getContext('2d');
+
+  // 有序抖动（Bayer 4x4）：缓解 256 色量化的渐变色带
+  const BAYER = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
+  const DITHER_AMP = 18;
+  const prep = (rgba) => {
+    if (!dither) return rgba;
+    const out = new Uint8ClampedArray(rgba.length);
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const i = (y * w + x) * 4;
+        const t = ((BAYER[(y & 3) * 4 + (x & 3)] + 0.5) / 16 - 0.5) * DITHER_AMP;
+        out[i] = rgba[i] + t;
+        out[i + 1] = rgba[i + 1] + t;
+        out[i + 2] = rgba[i + 2] + t;
+        out[i + 3] = rgba[i + 3];
+      }
+    }
+    return out;
+  };
   const frameCount = Math.max(2, Math.round(duration * fps));
   const delay = Math.max(20, Math.round(1000 / fps));
 
@@ -30,7 +49,7 @@ export async function exportGif({ draw, width, height, fps, duration, maxColors 
   for (let k = 0; k < 3; k++) {
     const t = duration * (0.45 + k * 0.2);
     draw(ctx, t);
-    const rgba = ctx.getImageData(0, 0, w, h).data;
+    const rgba = prep(ctx.getImageData(0, 0, w, h).data);
     if (!palette) palette = quantize(rgba, maxColors);
     if (onProgress) onProgress(0.05 + k * 0.05);
   }
@@ -39,7 +58,7 @@ export async function exportGif({ draw, width, height, fps, duration, maxColors 
   for (let i = 0; i < frameCount; i++) {
     const t = (i / Math.max(1, frameCount - 1)) * duration;
     draw(ctx, t);
-    const rgba = ctx.getImageData(0, 0, w, h).data;
+    const rgba = prep(ctx.getImageData(0, 0, w, h).data);
     const indexed = applyPalette(rgba, palette);
     gif.writeFrame(indexed, w, h, {
       palette: i === 0 ? palette : undefined,

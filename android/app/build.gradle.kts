@@ -14,6 +14,17 @@ android {
         versionCode = 1
         versionName = "0.1.0"
     }
+    // 固定 debug 签名：CI 默认每次生成随机 debug keystore，导致覆盖安装失败（必须卸载）
+    // 这里用仓库内固定 keystore（PKCS12），从此可以原地升级
+    signingConfigs {
+        getByName("debug") {
+            storeFile = file("debug-fixed.keystore")
+            storeType = "PKCS12"
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+    }
     buildTypes {
         release {
             isMinifyEnabled = false
