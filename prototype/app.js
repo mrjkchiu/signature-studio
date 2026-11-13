@@ -556,7 +556,14 @@ function buildPortChips() {
 }
 
 // ---------------- Tab ----------------
+// 两个 Tab 各自记住自己的滚动位置，切换时不互相影响；启动时都在顶部
+const TAB_SCROLL = { cn: 0, port: 0 };
+const panelScroller = () => document.querySelector('.panel');
+
 function setTab(tab) {
+  const scroller = panelScroller();
+  if (scroller && state.tab !== tab) TAB_SCROLL[state.tab] = scroller.scrollTop;
+
   state.tab = tab;
   $('tabCn').dataset.on = tab === 'cn' ? '1' : '0';
   $('tabPort').dataset.on = tab === 'port' ? '1' : '0';
@@ -566,6 +573,14 @@ function setTab(tab) {
   resize();
   if (tab === 'port') rebuildPort(); else rebuildCn();
   t0 = performance.now();
+
+  // 恢复该 Tab 自己的滚动位置（默认 0 = 顶部），等布局稳定后再校准一次
+  if (scroller) {
+    const y = TAB_SCROLL[tab] || 0;
+    scroller.scrollTop = y;
+    requestAnimationFrame(() => { scroller.scrollTop = y; });
+    setTimeout(() => { if (state.tab === tab) scroller.scrollTop = y; }, 60);
+  }
 }
 
 // ---------------- 导出 ----------------
@@ -794,6 +809,8 @@ async function main() {
   }
   syncColorSliders();
   setupDecoDrag();
+  TAB_SCROLL.cn = 0; TAB_SCROLL.port = 0;
+  { const sc = panelScroller(); if (sc) sc.scrollTop = 0; }
 
   const nameInput = $('name');
   nameInput.value = state.text;
