@@ -529,12 +529,22 @@ function buildPortChips() {
   rep('portDur', [
     { v: 3, label: '3s' }, { v: 5, label: '5s' }, { v: 8, label: '8s' }, { v: 12, label: '12s' },
   ], p.duration, (v) => { p.duration = v; });
-  rep('portBg', [
-    { v: '#0B0B12', label: '墨黑' }, { v: '#101A33', label: '深蓝' }, { v: '#F7F4EC', label: '宣纸' },
-    { v: '#000000', label: '纯黑' },
-  ], p.bg, (v) => { p.bg = v; p.transparent = false; });
+  // 背景互斥：透明与颜色不能同时选中
   const bgEl = $('portBg');
-  bgEl.appendChild(chip('透明', p.transparent, () => { p.transparent = !p.transparent; buildPortChips(); rebuildPort(); }));
+  if (bgEl) {
+    bgEl.innerHTML = '';
+    const BGS = [['#0B0B12', '墨黑'], ['#101A33', '深蓝'], ['#F7F4EC', '宣纸'], ['#000000', '纯黑']];
+    for (const [c, l] of BGS) {
+      bgEl.appendChild(chip(l, !p.transparent && p.bg === c, () => {
+        p.bg = c; p.transparent = false;
+        buildPortChips(); rebuildPort();
+      }));
+    }
+    bgEl.appendChild(chip('透明', p.transparent, () => {
+      p.transparent = !p.transparent;
+      buildPortChips(); rebuildPort();
+    }));
+  }
 }
 
 // ---------------- Tab ----------------
