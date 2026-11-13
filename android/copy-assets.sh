@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # 把 Web 原型打包进 Android assets：
-#  - 只拷贝 FONTS 列表里真正启用的字体（避免把已删除的字体也打进去）
-#  - 笔顺数据只保留中心线（medians），去掉未使用的轮廓字段
+#  - 只拷贝 FONTS 列表里真正启用的字体
+#  - 笔顺数据只保留中心线（medians）
+#  - FONT_WOFF2=1 且有 fonttools 时：字体子集化 + 转 WOFF2（约 1/3 体积）
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -18,49 +19,77 @@ cp -r "$SRC/data" "$DEST/data"
 cp -r "$SRC/port" "$DEST/port"
 cp -r "$SRC/vendor" "$DEST/vendor"
 
-node - "$SRC" "$DEST" <<'JS'
-const fs = require('fs');
-const path = require('path');
-const [src, dest] = process.argv.slice(2);
+# 1) 启用字体列表（来自 renderer.js 的 FONTS）
+FONT_LIST=$(node - "$SRC" <<'JS'
+const fs = require('fs'), path = require('path');
+const src = process.argv[2];
 const js = fs.readFileSync(path.join(src, 'renderer.js'), 'utf8');
 const block = (js.match(/export const FONTS = \[[\s\S]*?\];/) || [''])[0];
-const files = [...block.matchAll(/file: '([^']+)'/g)].map((m) => m[1].split('/').pop());
-let copied = 0, bytes = 0;
-for (const f of files) {
-  const p = path.join(src, 'fonts', f);
-  if (!fs.existsSync(p)) { console.warn('⚠ 缺字体文件:', f); continue; }
-  fs.copyFileSync(p, path.join(dest, 'fonts', f));
-  bytes += fs.statSync(p).size;
-  copied++;
-}
-// 保险：把打包后的 renderer.js 里 FONTS 裁到实际存在的字体
+console.log([...block.matchAll(/file: '([^']+)'/g)].map((m) => m[1].split('/').pop()).join('\n'));
+JS
+)
+
+# 2) 可选：字体子集化 + WOFF2
+EXT=ttf
+if [ "${FONT_WOFF2:-0}" = "1" ] && python3 -c "import fontTools, brotli" 2>/dev/null; then
+  python3 ../scripts/subset-fonts.py --src "$SRC/fonts" --dest "$SRC/fonts-woff2" \
+    --strokes "$SRC/data/strokes" --fonts $FONT_LIST || echo "⚠ 字体转换失败，回退 TTF"
+  TOTAL=$(echo "$FONT_LIST" | wc -l)
+  GOT=$(ls "$SRC"/fonts-woff2/*.woff2 2>/dev/null | wc -l)
+  if [ "$GOT" -ge "$TOTAL" ]; then EXT=woff2; else echo "⚠ 仅 $GOT/$TOTAL 套转换成功，整体回退 TTF"; fi
+fi
+
+# 3) 拷贝字体（WOFF2 优先，缺哪个就回退那个 TTF）
+COPIED=0
+for f in $FONT_LIST; do
+  base="${f%.ttf}"
+  if [ "$EXT" = "woff2" ] && [ -f "$SRC/fonts-woff2/$base.woff2" ]; then
+    cp "$SRC/fonts-woff2/$base.woff2" "$DEST/fonts/$base.woff2"
+    COPIED=$((COPIED+1))
+  elif [ -f "$SRC/fonts/$f" ]; then
+    cp "$SRC/fonts/$f" "$DEST/fonts/$f"
+    COPIED=$((COPIED+1))
+  else
+    echo "⚠ 缺字体: $f"
+  fi
+done
+echo "字体格式: $EXT，打包 $COPIED 套"
+
+# 4) 重写 renderer.js：裁 FONTS 到实际打包的字体，并按需改扩展名
+node - "$SRC" "$DEST" "$EXT" <<'JS'
+const fs = require('fs'), path = require('path');
+const [src, dest, ext] = process.argv.slice(2);
+const js = fs.readFileSync(path.join(src, 'renderer.js'), 'utf8');
+const shipped = new Set(fs.readdirSync(path.join(dest, 'fonts')));
 const out = js.replace(/export const FONTS = \[([\s\S]*?)\];/, (m, body) => {
-  const lines = body.split('\n').filter((line) => {
+  const keep = body.split('\n').filter((line) => {
     const mm = line.match(/file: '([^']+)'/);
     if (!mm) return line.trim() === '';
-    return files.includes(mm[1].split('/').pop());
+    const file = mm[1].split('/').pop();
+    const base = file.replace(/\.ttf$/, '');
+    return shipped.has(file) || (ext === 'woff2' && shipped.has(base + '.woff2'));
+  }).map((line) => {
+    if (ext !== 'woff2') return line;
+    return line.replace(/file: 'fonts\/([^']+)\.ttf'/, "file: 'fonts/$1.woff2'");
   });
-  return `export const FONTS = [${lines.join('\n')}\n];`;
+  return `export const FONTS = [${keep.join('\n')}\n];`;
 });
 fs.writeFileSync(path.join(dest, 'renderer.js'), out);
-console.log(`打包字体: ${copied} 套 (${(bytes / 1048576).toFixed(1)}MB) → ${files.join(' / ')}`);
+console.log('renderer.js FONTS 已按打包字体重写');
 JS
 
+# 5) 笔顺数据保险：若还是全量则剥成只含 medians
 node - "$DEST" <<'JS'
-const fs = require('fs');
-const path = require('path');
-const dest = process.argv[2];
-const dir = path.join(dest, 'data', 'strokes');
+const fs = require('fs'), path = require('path');
+const dir = path.join(process.argv[2], 'data', 'strokes');
 let n = 0, saved = 0;
 for (const f of fs.readdirSync(dir)) {
   if (!f.endsWith('.json')) continue;
   const p = path.join(dir, f);
   const b = fs.readFileSync(p, 'utf8');
   if (!b.includes('"strokes"')) continue;
-  const d = JSON.parse(b);
-  const out = JSON.stringify({ medians: d.medians || [] });
-  saved += b.length - out.length;
-  n++;
+  const out = JSON.stringify({ medians: JSON.parse(b).medians || [] });
+  saved += b.length - out.length; n++;
   fs.writeFileSync(p, out);
 }
 console.log(`笔顺瘦身: ${n} 字, 省 ${(saved / 1048576).toFixed(1)}MB`);

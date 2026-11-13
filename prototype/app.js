@@ -46,7 +46,7 @@ const tempCanvas = document.createElement('canvas');
 
 const fontOf = (id) => R.FONTS.find((f) => f.id === id) || R.FONTS[0];
 const paletteOf = (id) => R.PALETTES.find((p) => p.id === id) || R.PALETTES[0];
-const fontStackOf = (f) => `"${f.css}"`;
+const fontStackOf = (f) => `"${f.css}", sans-serif`;   // 子集字体缺字时回退系统字体
 const getCharData = (ch) => SkeletonData.get(ch) || null;
 
 function hsl(h, s, l) { return `hsl(${h} ${Math.max(0, Math.min(100, s))}% ${Math.max(0, Math.min(100, l))}%)`; }
@@ -73,15 +73,23 @@ function setBusy(on, text) {
 }
 
 // ---------------- 字体 / 笔顺 ----------------
+const failedFonts = new Set();
 async function ensureFont(font) {
   if (loadedFonts.has(font.id)) return true;
+  if (failedFonts.has(font.id)) return false;
   try {
     const face = new FontFace(font.css, `url(${font.file})`);
     await face.load();
     document.fonts.add(face);
     loadedFonts.add(font.id);
     return true;
-  } catch (e) { return false; }
+  } catch (e) {
+    if (!failedFonts.has(font.id)) {
+      failedFonts.add(font.id);
+      toast(`字体「${font.label}」加载失败，已用系统字体替代`);
+    }
+    return false;
+  }
 }
 async function ensureChar(ch) {
   if (SkeletonData.has(ch)) return;

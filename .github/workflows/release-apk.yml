@@ -25,11 +25,20 @@ jobs:
         with:
           node-version: '20'
 
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: 字体子集化依赖
+        run: pip install --quiet fonttools brotli
+
       - name: 拉素材（字体 + 笔顺数据）
         run: node scripts/fetch-assets.mjs
 
-      - name: 打包 assets
+      - name: 打包 assets（字体转 WOFF2 子集）
         run: bash android/copy-assets.sh
+        env:
+          FONT_WOFF2: '1'
 
       - name: 补齐 Android SDK 组件
         run: |
