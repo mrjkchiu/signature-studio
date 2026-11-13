@@ -31,12 +31,22 @@ JS
 
 # 2) 可选：字体子集化 + WOFF2
 EXT=ttf
-if [ "${FONT_WOFF2:-0}" = "1" ] && python3 -c "import fontTools, brotli" 2>/dev/null; then
-  python3 ../scripts/subset-fonts.py --src "$SRC/fonts" --dest "$SRC/fonts-woff2" \
-    --strokes "$SRC/data/strokes" --fonts $FONT_LIST || echo "⚠ 字体转换失败，回退 TTF"
-  TOTAL=$(echo "$FONT_LIST" | wc -l)
-  GOT=$(ls "$SRC"/fonts-woff2/*.woff2 2>/dev/null | wc -l)
-  if [ "$GOT" -ge "$TOTAL" ]; then EXT=woff2; else echo "⚠ 仅 $GOT/$TOTAL 套转换成功，整体回退 TTF"; fi
+# 需要时（FONT_WOFF2=1）现场重新生成本地 WOFF2；否则直接用仓库里已生成的
+if [ "${FONT_WOFF2:-0}" = "1" ]; then
+  if python3 -c "import fontTools, brotli" 2>/dev/null; then
+    python3 ../scripts/subset-fonts.py --src "$SRC/fonts" --dest "$SRC/fonts-woff2" \
+      --strokes "$SRC/data/strokes" --fonts $FONT_LIST || echo "⚠ 字体转换失败"
+    python3 -c "import fontTools; print('fontTools', fontTools.version)" || true
+  else
+    echo "ℹ 环境没有 fontTools/brotli，直接使用仓库内已生成的 WOFF2"
+  fi
+fi
+TOTAL=$(echo "$FONT_LIST" | wc -l)
+GOT=$(ls "$SRC"/fonts-woff2/*.woff2 2>/dev/null | wc -l)
+if [ "$GOT" -ge "$TOTAL" ] && [ "$TOTAL" -gt 0 ]; then
+  EXT=woff2
+else
+  echo "⚠ 仓库内 WOFF2 不完整（$GOT/$TOTAL），回退 TTF"
 fi
 
 # 3) 拷贝字体（WOFF2 优先，缺哪个就回退那个 TTF）

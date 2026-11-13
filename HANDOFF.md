@@ -105,7 +105,7 @@ node tools/verify-port.mjs # 移植版 20 个参数是否真实生效（墨迹�
 - 顺手修了得意黑字体路径错误（此前一直加载失败）
 - 预期 APK 64.4M → ~41M（P0 实测 42.75M）
 - P1 字体子集化 + WOFF2：51.8M → 15.4M，预期 APK ~20M
-  - `scripts/subset-fonts.py` 生成 `prototype/fonts-woff2/`（不入库），`FONT_WOFF2=1` 时打包使用
+  - `prototype/fonts-woff2/` **已入库**（16M，7 套），`copy-assets.sh` 直接使用；重生成用 `python3 scripts/subset-fonts.py ...`
   - CI 已自动安装 fonttools/brotli；7 套全部转换成功才启用，否则整体回退 TTF
   - 字体栈已加 `sans-serif` 兜底，缺字不会变豆腐块
 - 详见 `docs/包体与性能优化评估.md`

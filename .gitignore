@@ -18,6 +18,3 @@ dist/*.zip
 dist/*.bundle
 .cache-hwd*
 *.log
-
-# 子集化后的 WOFF2（构建时生成，不入库）
-prototype/fonts-woff2/
